@@ -25,12 +25,14 @@ Once installed, the app opens full-screen and works **offline**. When a new vers
 - **Gamification**: XP (10 per first-try answer, 5 per retried answer, +5 for a perfect lesson), combos, daily goal, day streak, 12 achievements.
 - **Mistakes book**: Every wrong answer is saved. Answer a question correctly in Review to clear it.
 - **Profile**: Accuracy, weekly XP chart, achievements, recent lessons, daily-goal setting, retake the placement test.
+- **Detailed notes (📖 詳細解說)**: After each answer, a dropdown shows the Chinese meaning, forms, core patterns with example sentences and translations, other meanings, how the other options differ, and tips. Notes are also in the Mistakes book. The app remembers whether you like it open.
 - Keyboard: press `1`–`4` to choose an answer and `Enter` to check or continue.
 
 ## Files
 - `index.html`: entry page
 - `styles.css`: styles (supports dark mode, works on phone and desktop)
 - `questions.js`: question bank (6 levels × 2 skills × 10 questions = 120 questions)
+- `notes.js`: detailed Chinese study notes for every question (keyed by question id, e.g. `A2-v6`)
 - `app.js`: app logic
 - `pwa.js`: service worker registration, install prompt, update and offline notices
 - `sw.js`: service worker (offline cache). **Bump `VERSION` whenever you change app files.**
@@ -40,6 +42,7 @@ Once installed, the app opens full-screen and works **offline**. When a new vers
 In `questions.js`, add a row to `BANK.<level>.<skill>`:
 `["prompt with ___", ["correct", "wrong1", "wrong2", "wrong3"], 0, "explanation"]`
 The answer index is the third value. Options are shuffled automatically when shown.
+Then add a matching entry to `notes.js` with the new id (for example `A1-v11`), and bump `VERSION` in `sw.js`.
 
 ## Known limitations
 - Data is stored only in this browser on this device. Cross-device sync needs a backend such as Supabase or Firebase.

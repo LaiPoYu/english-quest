@@ -257,3 +257,26 @@ h1, h2, h3 { margin: 0; font-weight: 900; }
   box-shadow: 0 6px 20px rgba(0,0,0,.25); cursor: pointer; animation: up .25s ease;
 }
 .toast[hidden] { display: none; }
+
+/* detailed notes dropdown */
+.quiz-foot .fb { max-height: 55dvh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.note { margin-top: 10px; border-radius: 12px; background: var(--surface); border: 2px solid var(--line); color: var(--text); text-align: left; }
+.note > summary {
+  list-style: none; cursor: pointer; padding: 10px 14px; font-weight: 800; font-size: 15px;
+  display: flex; align-items: center; justify-content: space-between; user-select: none;
+}
+.note > summary::-webkit-details-marker { display: none; }
+.note > summary::after { content: '▾'; color: var(--muted); transition: transform .2s; }
+.note[open] > summary::after { transform: rotate(180deg); }
+.note[open] > summary { border-bottom: 2px solid var(--line); }
+.note-body { padding: 12px 14px 14px; font-size: 15px; font-weight: 600; line-height: 1.6; }
+.note-body .n-head { font-size: 16px; }
+.note-body .n-word { color: var(--blue); }
+.note-body h4 { margin: 14px 0 6px; font-size: 16px; font-weight: 900; }
+.note-body ul { margin: 0; padding-left: 20px; }
+.note-body li { margin: 4px 0; }
+.note-body .n-ex { margin: 2px 0 6px 2px; padding-left: 10px; border-left: 3px solid var(--line); }
+.note-body .n-ex i { color: var(--red); font-style: italic; }
+.note-body .n-tip { margin: 0; }
+@media (prefers-color-scheme: dark) { .note-body .n-ex i { color: #ff8a8a; } }
+.mistake .note { margin-top: 4px; }

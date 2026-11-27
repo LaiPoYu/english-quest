@@ -322,6 +322,7 @@ function renderQuiz() {
           <div class="fb-title">${S.ok ? (S.combo >= 3 ? `🔥 ${S.combo} in a row!` : pickPraise()) : 'Not quite'}</div>
           ${S.ok ? '' : `<div class="fb-ans">Correct answer: <b>${esc(right)}</b></div>`}
           <div class="fb-ex">${esc(q.explain)}</div>
+          ${noteHtml(q)}
         </div>
         <button class="btn ${S.ok ? 'btn-green' : 'btn-red'}" data-act="next" autofocus>Continue</button>
       </footer>`
@@ -342,6 +343,24 @@ function renderQuiz() {
     ${foot}
   </div>`;
 }
+/* ---------- detailed notes (dropdown) ---------- */
+function noteHtml(q, remember = true) {
+  const n = window.NOTES && window.NOTES[q.id];
+  if (!n) return '';
+  const isGrammar = n.p.startsWith('文法');
+  const head = isGrammar
+    ? `<b class="n-word">${esc(n.t)}</b>（${esc(n.p)}）：<b>${esc(n.m)}</b>`
+    : `<b class="n-word">${esc(n.t)}</b>（${esc(n.p)}${n.f ? `，${n.p.includes('動詞') ? '三態' : '變化'}為 <i>${esc(n.f)}</i>` : ''}）的中文意思是<b>${esc(n.m)}</b>。`;
+  const ex = (e, zh) => `<div class="n-ex"><i>${esc(e)}</i>（${esc(zh)}）</div>`;
+  let html = `<div class="n-head">${head}</div>`;
+  if (n.u && n.u.length) html += `<h4>${isGrammar ? '句型結構' : '核心用法與句型'}</h4><ul>${n.u.map(([pat, d, e, zh]) => `<li><b>${esc(pat)}</b>：${esc(d)}${ex(e, zh)}</li>`).join('')}</ul>`;
+  if (n.o && n.o.length) html += `<h4>${isGrammar ? '延伸用法' : '其他常見意思'}</h4><ul>${n.o.map(([d, e, zh]) => `<li><b>${esc(d)}</b>${ex(e, zh)}</li>`).join('')}</ul>`;
+  if (n.c && n.c.length) html += `<h4>${isGrammar ? '易混淆比較' : '與其他選項的差別'}</h4><ul>${n.c.map(([w, zh]) => `<li><b>${esc(w)}</b>：${esc(zh)}</li>`).join('')}</ul>`;
+  if (n.tip) html += `<h4>小提醒</h4><p class="n-tip">💡 ${esc(n.tip)}</p>`;
+  const open = remember && store.get('eq_note_open', false) ? ' open' : '';
+  return `<details class="note"${open}${remember ? ' data-remember="1"' : ''}><summary>📖 詳細解說</summary><div class="note-body">${html}</div></details>`;
+}
+
 const PRAISE = ['Nice!', 'Correct!', 'Great job!', 'Awesome!', 'You got it!'];
 const pickPraise = () => PRAISE[Math.floor(Math.random() * PRAISE.length)];
 
@@ -469,6 +488,7 @@ function viewReview() {
       <div class="m-q">${blankify(q.prompt)}</div>
       <div class="m-a">✓ ${esc(q.options[q.answer])}</div>
       <div class="m-ex muted small">${esc(q.explain)}</div>
+      ${noteHtml(q, false)}
     </div>`;
   }).join('');
   return `
@@ -590,6 +610,10 @@ app.addEventListener('click', e => {
   const el = e.target.closest('[data-act]');
   if (el && actions[el.dataset.act]) actions[el.dataset.act](el);
 });
+// remember whether the learner likes the notes open during lessons
+app.addEventListener('toggle', e => {
+  if (e.target.matches && e.target.matches('details.note[data-remember]')) store.set('eq_note_open', e.target.open);
+}, true);
 app.addEventListener('change', e => {
   if (e.target.dataset.change === 'goal') { data.dailyGoal = Number(e.target.value); save(); render(); }
 });

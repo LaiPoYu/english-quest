@@ -44,6 +44,7 @@
   window.addEventListener('online', () => toast('✅ Back online.', { ms: 2000 }));
 
   if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
+  const hadController = !!navigator.serviceWorker.controller;
   window.addEventListener('load', async () => {
     try {
       const reg = await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' });
@@ -57,9 +58,11 @@
           if (w.state === 'installed' && navigator.serviceWorker.controller) offerUpdate(w);
         });
       });
+      // Reload only when an existing version is replaced (user tapped "update"),
+      // not on the very first install, so it never interrupts a first-time visitor.
       let reloaded = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (reloaded) return; reloaded = true; location.reload();
+        if (reloaded || !hadController) return; reloaded = true; location.reload();
       });
       // check for updates when the app comes back to the foreground
       document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
