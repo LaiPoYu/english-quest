@@ -14,6 +14,7 @@ const SKILLS = {
   vocab: { name: 'Vocabulary', icon: '📘', color: 'blue' },
   grammar: { name: 'Grammar', icon: '🧩', color: 'purple' },
   mixed: { name: 'Mixed Practice', icon: '🎯', color: 'orange' },
+  words: { name: 'Word Drill', icon: '🔤', color: 'blue' },
 };
 const LESSON_SIZE = 8;
 const MAX_HEARTS = 3;
@@ -30,8 +31,25 @@ const ACHIEVEMENTS = [
   { id: 'review10', icon: '🩹', name: 'Fixer', desc: 'Clear 10 mistakes in review', test: d => d.stats.cleared >= 10 },
   { id: 'goal', icon: '✅', name: 'Goal Getter', desc: 'Hit your daily XP goal', test: d => d.stats.goalsHit >= 1 },
   { id: 'c2', icon: '👑', name: 'Summit', desc: 'Complete a C2 lesson', test: d => d.stats.c2 >= 1 },
+  { id: 'words1', icon: '🔤', name: 'Word Hunter', desc: 'Finish your first word drill', test: d => d.stats.wordDrills >= 1 },
+  { id: 'words50', icon: '🧠', name: 'Word Collector', desc: 'Learn 50 words', test: d => Object.values(d.words || {}).filter(w => w.s >= 2).length >= 50 },
 ];
 const QMAP = Object.fromEntries(window.QUESTIONS.map(q => [q.id, q]));
+// Word drill list: one entry per vocabulary headword per level (meaning, part of speech, IPA, example).
+const WORDS = (() => {
+  const out = {};
+  for (const q of window.QUESTIONS) {
+    if (q.skill !== 'vocab') continue;
+    const note = (window.NOTES || {})[q.id];
+    if (!note) continue;
+    const key = q.level + ':' + note.t.toLowerCase();
+    const lv = out[q.level] || (out[q.level] = new Map());
+    if (lv.has(key)) continue;
+    const u = note.u && note.u[0];
+    lv.set(key, { key, level: q.level, w: note.t, m: note.m, p: note.p, ipa: (window.IPA || {})[q.id] || '', qid: q.id, ex: u ? [u[2], u[3]] : null });
+  }
+  return Object.fromEntries(Object.entries(out).map(([k, v]) => [k, [...v.values()]]));
+})();
 
 /* ---------- utils ---------- */
 const app = document.getElementById('app');
@@ -73,7 +91,8 @@ function newData() {
     created: today(), level: 'A1', placementDone: false,
     xp: 0, streak: 0, longestStreak: 0, lastActive: null,
     dailyGoal: 30, daily: {}, history: [], mistakes: {}, mastered: {}, achievements: {},
-    stats: { answered: 0, correct: 0, lessons: 0, perfect: 0, bestCombo: 0, cleared: 0, goalsHit: 0, c2: 0 },
+    words: {},
+    stats: { answered: 0, correct: 0, lessons: 0, perfect: 0, bestCombo: 0, cleared: 0, goalsHit: 0, c2: 0, wordDrills: 0 },
   };
 }
 function normalize(obj) {
@@ -267,6 +286,83 @@ function placementBlock(lvIdx) {
   return shuffle([...pick(a, 2), ...pick(b, 1)]).map(q => prep(q));
 }
 
+/* ---------- word drill ---------- */
+const WORD_DRILL_SIZE = 10;
+const wordStat = k => data.words[k] || { c: 0, w: 0, s: 0 };
+const isLearned = k => wordStat(k).s >= 2;
+const isWeak = k => wordStat(k).w > 0 && !isLearned(k);
+const meaningTokens = m => m.replace(/（[^）]*）/g, '').split(/[、；，,;／/\s]+/).filter(t => t.length > 0);
+const meaningsOverlap = (a, b) => { const tb = meaningTokens(b); return meaningTokens(a).some(t => tb.includes(t)); };
+const posGroup = p => /片語/.test(p) ? 'phrase' : /名詞/.test(p) ? 'noun' : /動詞/.test(p) ? 'verb' : /形容詞/.test(p) ? 'adj' : 'other';
+let wordListOpen = false;
+
+function wordItem(word, dir) {
+  const ok = x => x.key !== word.key && x.w.toLowerCase() !== word.w.toLowerCase() && !meaningsOverlap(x.m, word.m);
+  const pool = shuffle((WORDS[word.level] || []).filter(ok));
+  const ordered = [...pool.filter(x => posGroup(x.p) === posGroup(word.p)), ...pool];
+  const picks = [];
+  for (const x of ordered) {
+    if (picks.length === 3) break;
+    if (picks.includes(x)) continue;
+    if (picks.some(pk => meaningsOverlap(pk.m, x.m) || pk.w.toLowerCase() === x.w.toLowerCase())) continue;
+    picks.push(x);
+  }
+  const options = dir === 'e2z' ? [word.m, ...picks.map(x => x.m)] : [word.w, ...picks.map(x => x.w)];
+  return prep({
+    id: 'w|' + word.key + '|' + dir, level: word.level, skill: 'words', dir, word, noteId: word.qid,
+    prompt: dir === 'e2z' ? word.w : word.m, options, answer: 0,
+    explain: `${word.w}（${word.p}）＝ ${word.m}`, example: word.ex,
+  });
+}
+function startWords(dir, weakOnly = false) {
+  let list = WORDS[data.level] || [];
+  if (weakOnly) list = list.filter(w => isWeak(w.key));
+  const order = [
+    ...shuffle(list.filter(w => isWeak(w.key))),
+    ...shuffle(list.filter(w => !isWeak(w.key) && !isLearned(w.key))),
+    ...shuffle(list.filter(w => isLearned(w.key))),
+  ];
+  const pick = order.slice(0, WORD_DRILL_SIZE);
+  if (!pick.length) return;
+  const items = shuffle(pick).map(w => wordItem(w, dir === 'mix' ? (Math.random() < 0.5 ? 'e2z' : 'z2e') : dir));
+  S = base('words', items);
+  S.level = data.level; S.skill = 'words'; S.dir = dir;
+  render();
+}
+function viewWords() {
+  const lv = data.level;
+  const list = WORDS[lv] || [];
+  const learned = list.filter(w => isLearned(w.key)).length;
+  const weak = list.filter(w => isWeak(w.key)).length;
+  const pct = list.length ? Math.round((learned / list.length) * 100) : 0;
+  const btn = (dir, icon, title, sub) => `<button class="skill ${dir === 'z2e' ? 'purple' : dir === 'mix' ? 'orange' : 'blue'}" data-act="words" data-dir="${dir}">
+      <div class="skill-icon">${icon}</div>
+      <div class="skill-main"><div class="skill-name">${title}</div><div class="skill-sub">${sub}</div></div>
+      <div class="skill-go">▶</div></button>`;
+  const dots = k => { const s = Math.min(wordStat(k).s, 2); return `<span class="dots" title="${isLearned(k) ? 'Learned' : 'Learning'}">${'●'.repeat(s)}${'○'.repeat(2 - s)}</span>`; };
+  const rows = list.map(w => `<div class="wl-row ${isLearned(w.key) ? 'learned' : isWeak(w.key) ? 'weak' : ''}">
+      ${sayBtn(w.w, 'mini')}
+      <div class="wl-main"><div><b>${esc(w.w)}</b> <span class="ipa small">${esc(w.ipa)}</span></div><div class="muted small">${esc(w.p)}・${esc(w.m)}</div></div>
+      ${dots(w.key)}</div>`).join('');
+  return `
+  <section class="card words-head">
+    <div class="goal-head"><b>🔤 Word Drill · ${lv} ${esc(LEVEL_INFO[lv].name)}</b><span>${learned} / ${list.length} learned</span></div>
+    <div class="bar"><div style="width:${pct}%"></div></div>
+    <div class="fine left">Answer a word correctly twice in a row to mark it as learned. Words you miss come back first.</div>
+  </section>
+  <section class="skills">
+    ${btn('e2z', '🇬🇧', 'English → 中文', `See the word, pick the Chinese meaning · ${WORD_DRILL_SIZE} words`)}
+    ${btn('z2e', '🇹🇼', '中文 → English', `看中文，選出英文單字 · ${WORD_DRILL_SIZE} words`)}
+    ${btn('mix', '🔀', 'Mixed', 'Both directions, shuffled')}
+  </section>
+  ${weak ? `<button class="btn btn-ghost" data-act="words" data-dir="mix" data-weak="1">🔁 Practice weak words (${weak})</button>` : ''}
+  <div class="row words-tools">
+    <button class="link" data-act="wordList">${wordListOpen ? '▾ Hide word list' : '▸ Show word list'} (${list.length})</button>
+    <button class="link" data-act="autospeak">${autoSpeak() ? '🔊 Auto-play: On' : '🔇 Auto-play: Off'}</button>
+  </div>
+  ${wordListOpen ? `<section class="card word-list">${rows}</section>` : ''}`;
+}
+
 function startLesson(skill) {
   S = base('lesson', lessonPool(data.level, skill).map(q => prep(q)));
   S.level = data.level; S.skill = skill; S.hearts = MAX_HEARTS;
@@ -288,6 +384,27 @@ function base(mode, items) {
     firstTry: 0, wrong: 0, combo: 0, bestCombo: 0, xp: 0, cleared: 0 };
 }
 
+function checkWord(item, ok) {
+  const k = item.q.word.key;
+  const w = data.words[k] || { c: 0, w: 0, s: 0 };
+  if (ok) {
+    data.stats.correct++;
+    w.c++; w.s++;
+    S.combo++; S.bestCombo = Math.max(S.bestCombo, S.combo);
+    S.xp += item.retry ? 2 : 5;
+    if (!item.retry) S.firstTry++;
+  } else {
+    w.w++; w.s = 0;
+    S.combo = 0; S.wrong++;
+    if (!item.retry) S.items.push(prep(item.q, true));
+  }
+  data.words[k] = w;
+  data.stats.bestCombo = Math.max(data.stats.bestCombo, S.bestCombo);
+  save();
+  if (navigator.vibrate && !ok) { try { navigator.vibrate(60); } catch { /* ignore */ } }
+  if (item.q.dir === 'z2e') TTS.speak(item.q.word.w);   // hear the English word after answering
+  render();
+}
 function check() {
   if (!S || S.checked || S.sel == null) return;
   const item = S.items[S.i];
@@ -295,6 +412,7 @@ function check() {
   const id = item.q.id;
   S.checked = true; S.ok = ok;
   data.stats.answered++;
+  if (S.mode === 'words') { checkWord(item, ok); return; }
   if (ok) {
     data.stats.correct++;
     data.mastered[id] = true;
@@ -360,7 +478,7 @@ function newAchievements() {
 
 function finishLesson(failed) {
   const s = S;
-  const perfect = !failed && s.mode === 'lesson' && s.wrong === 0;
+  const perfect = !failed && (s.mode === 'lesson' || s.mode === 'words') && s.wrong === 0;
   if (perfect) s.xp += 5;
   addXp(s.xp);
   touchStreak();
@@ -368,6 +486,7 @@ function finishLesson(failed) {
     if (s.mode === 'lesson') data.stats.lessons++;
     if (perfect) data.stats.perfect++;
     if (s.mode === 'lesson' && s.level === 'C2') data.stats.c2++;
+    if (s.mode === 'words') data.stats.wordDrills++;
   }
   const total = s.items.filter(x => !x.retry).length;
   data.history.unshift({ date: today(), mode: s.mode, level: s.level || '—', skill: s.skill || 'review', correct: s.firstTry, total, xp: s.xp, failed });
@@ -453,12 +572,13 @@ function renderQuiz() {
   let progress;
   if (S.mode === 'placement') progress = ((S.p.lv * 3 + S.p.blockCount + (S.checked ? 1 : 0)) / 18) * 100;
   else progress = ((S.i + (S.checked ? 1 : 0)) / S.items.length) * 100;
-  const tag = S.mode === 'placement' ? `Placement · Level ${q.level}`
+  const tag = S.mode === 'words' ? `${q.level} · Word Drill · ${q.dir === 'e2z' ? 'English → 中文' : '中文 → English'}`
+    : S.mode === 'placement' ? `Placement · Level ${q.level}`
     : S.mode === 'review' ? `Review · ${q.level} ${SKILLS[q.skill].name}`
     : `${q.level} · ${SKILLS[q.skill].name}`;
   const hearts = S.mode === 'lesson'
     ? `<div class="hearts" title="Hearts">${'❤️'.repeat(Math.max(S.hearts, 0))}${'🤍'.repeat(MAX_HEARTS - Math.max(S.hearts, 0))}</div>`
-    : `<div class="hearts small">${S.mode === 'placement' ? '🧭' : '🩹'}</div>`;
+    : `<div class="hearts small">${S.mode === 'placement' ? '🧭' : S.mode === 'words' ? '🔤' : '🩹'}</div>`;
   const opts = item.opts.map((o, i) => {
     let cls = 'opt';
     if (S.checked) { if (o.ok) cls += ' correct'; else if (i === S.sel) cls += ' wrong'; else cls += ' dim'; }
@@ -470,9 +590,11 @@ function renderQuiz() {
     ? `<footer class="quiz-foot ${S.ok ? 'is-ok' : 'is-bad'}">
         <div class="fb">
           <div class="fb-title">${S.ok ? (S.combo >= 3 ? `🔥 ${S.combo} in a row!` : pickPraise()) : 'Not quite'}</div>
-          <div class="fb-ans">${S.ok ? '✓ ' : 'Correct answer: '}<b>${esc(right)}</b> ${sayBtn(right)}</div>
+          ${q.word
+            ? `<div class="fb-ans">${S.ok ? '✓ ' : 'Correct answer: '}<b>${esc(q.word.w)}</b> ${sayBtn(q.word.w)} <span class="ipa">${esc(q.word.ipa)}</span> ＝ <b>${esc(q.word.m)}</b></div>`
+            : `<div class="fb-ans">${S.ok ? '✓ ' : 'Correct answer: '}<b>${esc(right)}</b> ${sayBtn(right)}</div>`}
           ${sentenceRow(q)}
-          <div class="fb-ex">${esc(q.explain)}</div>
+          ${q.word ? '' : `<div class="fb-ex">${esc(q.explain)}</div>`}
           ${noteHtml(q)}
         </div>
         <button class="btn ${S.ok ? 'btn-green' : 'btn-red'}" data-act="next" autofocus>Continue</button>
@@ -488,20 +610,35 @@ function renderQuiz() {
     <main class="quiz-body">
       ${item.retry ? '<div class="retry">↺ Previous mistake</div>' : ''}
       <div class="tag">${esc(tag)}</div>
-      <h2 class="prompt">${blankify(q.prompt)}</h2>
+      ${q.word ? wordPrompt(q) : `<h2 class="prompt">${blankify(q.prompt)}</h2>`}
       <div class="opts">${opts}</div>
     </main>
     ${foot}
   </div>`;
+  // English → 中文: read the new word aloud once when it appears
+  if (S.mode === 'words' && !S.checked && q.dir === 'e2z' && S.spokenAt !== S.i && autoSpeak()) { S.spokenAt = S.i; TTS.speak(q.word.w); }
 }
+function wordPrompt(q) {
+  const w = q.word;
+  if (q.dir === 'e2z') return `<div class="word-card">
+      <div class="word-big">${esc(w.w)}</div>
+      <div class="word-sub">${w.ipa ? `<span class="ipa">${esc(w.ipa)}</span>` : ''} ${sayBtn(w.w)} ${sayBtn(w.w, '', true)}</div>
+      <div class="word-hint">選出正確的中文意思</div></div>`;
+  return `<div class="word-card">
+      <div class="word-big zh">${esc(w.m)}</div>
+      <div class="word-sub"><span class="pos-chip">${esc(w.p)}</span></div>
+      <div class="word-hint">Choose the English word</div></div>`;
+}
+const autoSpeak = () => store.get('eq_autospeak', true);
 /* ---------- detailed notes (dropdown) ---------- */
 function noteHtml(q, remember = true) {
-  const n = window.NOTES && window.NOTES[q.id];
+  const nid = q.noteId || q.id;
+  const n = window.NOTES && window.NOTES[nid];
   if (!n) return '';
   const isGrammar = n.p.startsWith('文法');
   const head = isGrammar
     ? `<b class="n-word">${esc(n.t)}</b>（${esc(n.p)}）：<b>${esc(n.m)}</b>`
-    : `<b class="n-word">${esc(n.t)}</b>${window.IPA && IPA[q.id] ? ` <span class="ipa">${esc(IPA[q.id])}</span>` : ''} ${sayBtn(n.t)}（${esc(n.p)}${n.f ? `，${n.p.includes('動詞') ? '三態' : '變化'}為 <i>${esc(n.f)}</i>` : ''}）的中文意思是<b>${esc(n.m)}</b>。`;
+    : `<b class="n-word">${esc(n.t)}</b>${window.IPA && IPA[nid] ? ` <span class="ipa">${esc(IPA[nid])}</span>` : ''} ${sayBtn(n.t)}（${esc(n.p)}${n.f ? `，${n.p.includes('動詞') ? '三態' : '變化'}為 <i>${esc(n.f)}</i>` : ''}）的中文意思是<b>${esc(n.m)}</b>。`;
   const ex = (e, zh) => `<div class="n-ex">${/[A-Za-z]{2}/.test(e) ? sayBtn(e, 'mini') : ''}<i>${esc(e)}</i>（${esc(zh)}）</div>`;
   let html = `<div class="n-head">${head}</div>`;
   if (n.u && n.u.length) html += `<h4>${isGrammar ? '句型結構' : '核心用法與句型'}</h4><ul>${n.u.map(([pat, d, e, zh]) => `<li><b>${esc(pat)}</b>${d ? '：' + esc(d) : ''}${ex(e, zh)}</li>`).join('')}</ul>`;
@@ -540,6 +677,11 @@ const sayBtn = (text, cls = '', slow = false) => TTS.ok
   : '';
 const fullSentence = q => q.prompt.includes('___') ? q.prompt.replace(/___/g, q.options[q.answer]) : null;
 function sentenceRow(q, compact = false) {
+  if (q.word) {   // word drill: show the example sentence
+    if (!q.example) return '';
+    const [en, zh] = q.example;
+    return `<div class="sent"><div class="sent-en">${sayBtn(en)}${sayBtn(en, '', true)}<span>${esc(en)}</span></div><div class="sent-zh">🇹🇼 ${esc(zh)}</div></div>`;
+  }
   const full = fullSentence(q);
   const zh = window.TRANS && TRANS[q.id];
   if (!full && !zh) return '';
@@ -562,6 +704,7 @@ function renderLessonResult() {
   const r = lastResult;
   const acc = r.total ? Math.round((r.correct / r.total) * 100) : 0;
   const head = r.failed ? ['💔', 'Out of hearts', 'Mistakes were saved to your review list. Try again!']
+    : r.mode === 'words' ? ['🔤', r.perfect ? 'Perfect word drill!' : 'Word drill complete!', `You've learned ${(WORDS[data.level] || []).filter(w => isLearned(w.key)).length} / ${(WORDS[data.level] || []).length} ${data.level} words. Get a word right twice in a row to learn it.`]
     : r.mode === 'review' ? ['🩹', 'Review complete', `You cleared ${r.cleared} question${r.cleared === 1 ? '' : 's'} from your mistakes.`]
     : r.perfect ? ['💎', 'Perfect lesson!', '+5 bonus XP for no mistakes.']
     : ['🎉', 'Lesson complete!', 'Keep the streak going.'];
@@ -612,7 +755,7 @@ function topBar() {
 }
 function tabBar() {
   const t = (id, icon, label) => `<button class="tab ${tab === id ? 'on' : ''}" data-act="tab" data-tab="${id}"><span>${icon}</span>${label}</button>`;
-  return `<nav class="tabbar">${t('learn', '🏠', 'Learn')}${t('review', '🩹', 'Review')}${t('profile', '👤', 'Profile')}</nav>`;
+  return `<nav class="tabbar">${t('learn', '🏠', 'Learn')}${t('words', '🔤', 'Words')}${t('review', '🩹', 'Review')}${t('profile', '👤', 'Profile')}</nav>`;
 }
 function mastery(level, skill) {
   const pool = window.QUESTIONS.filter(q => q.level === level && (skill === 'mixed' || q.skill === skill));
@@ -624,6 +767,7 @@ function renderMain() {
   let body = '';
   if (tab === 'learn') body = viewLearn();
   else if (tab === 'review') body = viewReview();
+  else if (tab === 'words') body = viewWords();
   else body = viewProfile();
   app.innerHTML = `<div class="main">${topBar()}<div class="content">${body}</div>${tabBar()}</div>${sheet === 'levels' ? levelSheet() : sheet === 'ios' ? iosSheet() : ''}`;
 }
@@ -699,7 +843,7 @@ function viewProfile() {
     return `<div class="col" title="${v} XP"><div class="col-v">${v || ''}</div><div class="col-bar ${v ? '' : 'zero'}" style="height:${Math.round((v / maxXp) * 100)}%"></div><div class="col-l">${'SMTWTFS'[d.getDay()]}</div></div>`;
   }).join('');
   const ach = ACHIEVEMENTS.map(a => `<div class="ach ${data.achievements[a.id] ? 'got' : ''}" title="${esc(a.desc)}"><div class="ach-i">${a.icon}</div><div class="ach-n">${esc(a.name)}</div><div class="ach-d">${esc(a.desc)}</div></div>`).join('');
-  const hist = data.history.slice(0, 10).map(h => `<div class="h-row"><span>${h.date.slice(5)}</span><span>${h.mode === 'review' ? '🩹 Review' : `${h.level} ${SKILLS[h.skill] ? SKILLS[h.skill].name : ''}`}</span><span>${h.correct}/${h.total}${h.failed ? ' 💔' : ''}</span><span>+${h.xp} XP</span></div>`).join('') || '<div class="muted small">No lessons yet.</div>';
+  const hist = data.history.slice(0, 10).map(h => `<div class="h-row"><span>${h.date.slice(5)}</span><span>${h.mode === 'review' ? '🩹 Review' : h.mode === 'words' ? `🔤 ${h.level} Words` : `${h.level} ${SKILLS[h.skill] ? SKILLS[h.skill].name : ''}`}</span><span>${h.correct}/${h.total}${h.failed ? ' 💔' : ''}</span><span>+${h.xp} XP</span></div>`).join('') || '<div class="muted small">No lessons yet.</div>';
   const goalOpts = [10, 20, 30, 50, 80].map(g => `<option value="${g}" ${g === data.dailyGoal ? 'selected' : ''}>${g} XP / day</option>`).join('');
   return `
   <section class="profile-head">
@@ -795,6 +939,9 @@ const actions = {
   tab(el) { tab = el.dataset.tab; window.scrollTo(0, 0); render(); },
   lesson(el) { startLesson(el.dataset.skill); },
   review() { startReview(); },
+  words(el) { startWords(el.dataset.dir, el.dataset.weak === '1'); },
+  autospeak() { store.set('eq_autospeak', !autoSpeak()); render(); },
+  wordList() { wordListOpen = !wordListOpen; render(); },
   logout() { if (confirm('Log out?')) logout(); },
   async syncNow() { clearTimeout(pushTimer); await pull(); },
   async install() {

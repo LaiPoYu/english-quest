@@ -34,7 +34,8 @@ How sync works: every change is saved on the device first, then uploaded about 1
 - **Placement test**: Adaptive, 3 questions per level from A1 up. Passing a level (2 of 3 correct) moves you to the next one. Your recommended level is the first level you don't pass.
 - **Choose your level**: Change it any time from the level chip at the top or from the Level path.
 - **Lessons**: Vocabulary, Grammar, or Mixed. Each lesson has 8 questions and 3 hearts. A wrong answer is asked again once at the end of the lesson. Questions you haven't mastered come first.
-- **Gamification**: XP (10 per first-try answer, 5 per retried answer, +5 for a perfect lesson), combos, daily goal, day streak, 12 achievements.
+- **Gamification**: XP (10 per first-try answer, 5 per retried answer, +5 for a perfect lesson), combos, daily goal, day streak, 14 achievements.
+- **Word Drill (🔤 Words tab)**: 300 words, 50 per level, built from the vocabulary questions. Choose English → 中文, 中文 → English, or Mixed; each drill is 10 words. English words are read aloud automatically (you can turn this off). Wrong options are picked from the same level and part of speech, and words with overlapping meanings are excluded. A word counts as learned after 2 correct answers in a row; weak words come back first and have their own practice button. Includes a browsable word list with 🔊 and progress dots.
 - **Mistakes book**: Every wrong answer is saved. Answer a question correctly in Review to clear it.
 - **Profile**: Accuracy, weekly XP chart, achievements, recent lessons, daily-goal setting, retake the placement test.
 - **Detailed notes (📖 詳細解說)**: After each answer, a dropdown shows the Chinese meaning, forms, core patterns with example sentences and translations, other meanings, how the other options differ, and tips. Notes are also in the Mistakes book. The app remembers whether you like it open.
