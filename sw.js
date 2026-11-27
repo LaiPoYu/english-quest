@@ -1,6 +1,6 @@
 // Service worker: offline support for English Quest.
 // Bump VERSION whenever app files change so users get the update.
-const VERSION = 'v9';
+const VERSION = 'v10';
 const CACHE = 'eq-' + VERSION;
 const FONT_CACHE = 'eq-fonts';
 const APP_SHELL = [
@@ -16,6 +16,7 @@ const APP_SHELL = [
   './bank/A2.js',
   './bank/B1.js',
   './bank/B2.js',
+  './bank/C1.js',
   './bank/merge.js',
   './pwa.js',
   './manifest.webmanifest',
