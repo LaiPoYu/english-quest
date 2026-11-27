@@ -48,7 +48,7 @@ How sync works: every change is saved on the device first, then uploaded about 1
 - `app.js`: app logic, including cloud login and sync
 - `config.js`: Supabase URL + anon key (empty = local-only mode)
 - `supabase/schema.sql`: database table and security rules
-- `vendor/supabase/`: supabase-js 2.45.4 browser bundle (MIT), stored in the repo so the app works offline
+- `vendor/supabase/`: supabase-js 2.119.0 browser bundle (MIT), stored in the repo so the app works offline
 - `pwa.js`: service worker registration, install prompt, update and offline notices
 - `sw.js`: service worker (offline cache). **Bump `VERSION` whenever you change app files.**
 - `manifest.webmanifest`, `icons/`: app name, colors, icons
