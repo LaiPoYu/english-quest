@@ -29,7 +29,7 @@ for (const q of Q) {
   else {
     for (const k of ['t', 'p', 'm']) if (!n[k]) problems.push(where + ': notes missing ' + k);
     if (!Array.isArray(n.u) || !n.u.length) problems.push(where + ': notes need u');
-    for (const u of n.u || []) if (!Array.isArray(u) || u.length !== 4 || u.some(x => !x)) problems.push(where + ': bad u entry ' + JSON.stringify(u));
+    for (const u of n.u || []) if (!Array.isArray(u) || u.length !== 4 || !u[0] || !u[2] || !u[3]) problems.push(where + ': bad u entry ' + JSON.stringify(u));
     for (const o of n.o || []) if (!Array.isArray(o) || o.length !== 3 || o.some(x => !x)) problems.push(where + ': bad o entry ' + JSON.stringify(o));
     for (const c of n.c || []) if (!Array.isArray(c) || c.length !== 2 || c.some(x => !x)) problems.push(where + ': bad c entry ' + JSON.stringify(c));
   }

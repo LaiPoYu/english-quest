@@ -504,7 +504,7 @@ function noteHtml(q, remember = true) {
     : `<b class="n-word">${esc(n.t)}</b>${window.IPA && IPA[q.id] ? ` <span class="ipa">${esc(IPA[q.id])}</span>` : ''} ${sayBtn(n.t)}（${esc(n.p)}${n.f ? `，${n.p.includes('動詞') ? '三態' : '變化'}為 <i>${esc(n.f)}</i>` : ''}）的中文意思是<b>${esc(n.m)}</b>。`;
   const ex = (e, zh) => `<div class="n-ex">${/[A-Za-z]{2}/.test(e) ? sayBtn(e, 'mini') : ''}<i>${esc(e)}</i>（${esc(zh)}）</div>`;
   let html = `<div class="n-head">${head}</div>`;
-  if (n.u && n.u.length) html += `<h4>${isGrammar ? '句型結構' : '核心用法與句型'}</h4><ul>${n.u.map(([pat, d, e, zh]) => `<li><b>${esc(pat)}</b>：${esc(d)}${ex(e, zh)}</li>`).join('')}</ul>`;
+  if (n.u && n.u.length) html += `<h4>${isGrammar ? '句型結構' : '核心用法與句型'}</h4><ul>${n.u.map(([pat, d, e, zh]) => `<li><b>${esc(pat)}</b>${d ? '：' + esc(d) : ''}${ex(e, zh)}</li>`).join('')}</ul>`;
   if (n.o && n.o.length) html += `<h4>${isGrammar ? '延伸用法' : '其他常見意思'}</h4><ul>${n.o.map(([d, e, zh]) => `<li><b>${esc(d)}</b>${ex(e, zh)}</li>`).join('')}</ul>`;
   if (n.c && n.c.length) html += `<h4>${isGrammar ? '易混淆比較' : '與其他選項的差別'}</h4><ul>${n.c.map(([w, zh]) => `<li><b>${esc(w)}</b>：${esc(zh)}</li>`).join('')}</ul>`;
   if (n.tip) html += `<h4>小提醒</h4><p class="n-tip">💡 ${esc(n.tip)}</p>`;
