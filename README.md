@@ -44,7 +44,8 @@ How sync works: every change is saved on the device first, then uploaded about 1
 ## Files
 - `index.html`: entry page
 - `styles.css`: styles (supports dark mode, works on phone and desktop)
-- `questions.js`: question bank (6 levels × 2 skills × 10 questions = 120 questions)
+- `questions.js`: original question bank (6 levels × 2 skills × 10 questions = 120 questions)
+- `bank/A1.js` … `bank/C2.js`: 480 more original questions (40 vocabulary + 40 grammar per level, everyday-life and workplace topics). Each question carries its own notes, translation and IPA. `bank/merge.js` adds them to the app, and `node bank/validate.js` checks them. **Total: 600 questions.**
 - `notes.js`: detailed Chinese study notes, IPA (`IPA`), and Chinese translations (`TRANS`) for every question, keyed by question id (e.g. `A2-v6`)
 - `app.js`: app logic, including cloud login and sync
 - `config.js`: Supabase URL + anon key (empty = local-only mode)
@@ -55,7 +56,9 @@ How sync works: every change is saved on the device first, then uploaded about 1
 - `manifest.webmanifest`, `icons/`: app name, colors, icons
 
 ## Adding questions
-In `questions.js`, add a row to `BANK.<level>.<skill>`:
+The easiest way: append an item to `bank/<LEVEL>.js` (`vocab` or `grammar`) in this format: `{ q, o: [correct, wrong, wrong, wrong], e, zh, ipa, n: { t, p, m, u, c } }`. Then run `node bank/validate.js` and bump `VERSION` in `sw.js`.
+
+To add to the original bank instead, add a row to `BANK.<level>.<skill>` in `questions.js`:
 `["prompt with ___", ["correct", "wrong1", "wrong2", "wrong3"], 0, "explanation"]`
 The answer index is the third value. Options are shuffled automatically when shown.
 Then add a matching entry to `notes.js` with the new id (for example `A1-v11`), and bump `VERSION` in `sw.js`.
