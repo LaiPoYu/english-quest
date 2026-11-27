@@ -35,7 +35,7 @@ How sync works: every change is saved on the device first, then uploaded about 1
 - **Choose your level**: Change it any time from the level chip at the top or from the Level path.
 - **Lessons**: Vocabulary, Grammar, or Mixed. Each lesson has 8 questions and 3 hearts. A wrong answer is asked again once at the end of the lesson. Questions you haven't mastered come first.
 - **Gamification**: XP (10 per first-try answer, 5 per retried answer, +5 for a perfect lesson), combos, daily goal, day streak, 14 achievements.
-- **Word Drill (🔤 Words tab)**: 300 words, 50 per level, built from the vocabulary questions. Choose English → 中文, 中文 → English, or Mixed; each drill is 10 words. English words are read aloud automatically (you can turn this off). Wrong options are picked from the same level and part of speech, and words with overlapping meanings are excluded. A word counts as learned after 2 correct answers in a row; weak words come back first and have their own practice button. Includes a browsable word list with 🔊 and progress dots.
+- **Word Drill (🔤 Words tab)**: **8,632 words** sorted by CEFR level (A1 1,057 · A2 1,244 · B1 2,143 · B2 2,394 · C1 913 · C2 881). Modes: English → 中文, 中文 → English, **Spelling 拼字** (see the Chinese, type the English word; the first letter is shown, 💡 reveals more), and Mixed. **A word is mastered after 3 correct answers and is never quizzed again.** Weak words come first. The word list has search and filters (New / Learning / Mastered). The 300 hand-written words keep their own meanings, examples and notes.
 - **Mistakes book**: Every wrong answer is saved. Answer a question correctly in Review to clear it.
 - **Profile**: Accuracy, weekly XP chart, achievements, recent lessons, daily-goal setting, retake the placement test.
 - **Detailed notes (📖 詳細解說)**: After each answer, a dropdown shows the Chinese meaning, forms, core patterns with example sentences and translations, other meanings, how the other options differ, and tips. Notes are also in the Mistakes book. The app remembers whether you like it open.
@@ -67,3 +67,10 @@ Then add a matching entry to `notes.js` with the new id (for example `A1-v11`), 
 ## Known limitations
 - If both devices change progress while offline, the copy changed most recently wins.
 - Local-only mode (no `config.js`) is not real security. Use cloud mode for real accounts.
+
+## Word list sources & licenses
+- **CEFR-J Wordlist Version 1.5**, compiled by Yukio Tono, Tokyo University of Foreign Studies (via [openlanguageprofiles/olp-en-cefrj](https://github.com/openlanguageprofiles/olp-en-cefrj)). Free to use with citation.
+- **Octanove Vocabulary Profile C1/C2 1.0** by Octanove Labs. [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). `words/C1.js` and `words/C2.js` are shared under the same license.
+- **ECDICT** by skywind3000 ([MIT](https://github.com/skywind3000/ECDICT)): Chinese meanings and phonetics, converted to Taiwan Traditional Chinese with [opencc-js](https://github.com/nk2028/opencc-js).
+- To rebuild: download the sources into a folder, run `npm i opencc-js` there, then run `node tools/build-words.js <folder>`.
+- The meanings are processed automatically from a dictionary, so a few may be odd. Hand-written meanings override them for the 300 curated words.

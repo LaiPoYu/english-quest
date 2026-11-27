@@ -32,23 +32,34 @@ const ACHIEVEMENTS = [
   { id: 'goal', icon: '✅', name: 'Goal Getter', desc: 'Hit your daily XP goal', test: d => d.stats.goalsHit >= 1 },
   { id: 'c2', icon: '👑', name: 'Summit', desc: 'Complete a C2 lesson', test: d => d.stats.c2 >= 1 },
   { id: 'words1', icon: '🔤', name: 'Word Hunter', desc: 'Finish your first word drill', test: d => d.stats.wordDrills >= 1 },
-  { id: 'words50', icon: '🧠', name: 'Word Collector', desc: 'Learn 50 words', test: d => Object.values(d.words || {}).filter(w => w.s >= 2).length >= 50 },
+  { id: 'words50', icon: '🧠', name: 'Word Collector', desc: 'Master 50 words', test: d => Object.values(d.words || {}).filter(w => w.c >= 3).length >= 50 },
+  { id: 'spell20', icon: '⌨️', name: 'Speller', desc: 'Spell 20 words correctly', test: d => d.stats.spelled >= 20 },
 ];
 const QMAP = Object.fromEntries(window.QUESTIONS.map(q => [q.id, q]));
-// Word drill list: one entry per vocabulary headword per level (meaning, part of speech, IPA, example).
+// Word drill list: the CEFR dictionary (words/*.js, ~8,500 words) merged with the 300 hand-written
+// vocabulary headwords. A word appears once, at its lowest level; hand-written meaning/example/notes win.
 const WORDS = (() => {
   const out = {};
+  const byKey = new Map();
+  const put = (lv, e) => { (out[lv] || (out[lv] = [])).push(e); byKey.set(e.key, e); };
+  const dict = window.EQ_WORDS || {};
+  for (const lv of LEVELS) for (const [w, p, m, ipa] of (dict[lv] || [])) {
+    const key = w.toLowerCase();
+    if (!byKey.has(key)) put(lv, { key, level: lv, w, m, p, ipa, qid: null, ex: null });
+  }
   for (const q of window.QUESTIONS) {
     if (q.skill !== 'vocab') continue;
     const note = (window.NOTES || {})[q.id];
     if (!note) continue;
-    const key = q.level + ':' + note.t.toLowerCase();
-    const lv = out[q.level] || (out[q.level] = new Map());
-    if (lv.has(key)) continue;
+    const key = note.t.toLowerCase();
     const u = note.u && note.u[0];
-    lv.set(key, { key, level: q.level, w: note.t, m: note.m, p: note.p, ipa: (window.IPA || {})[q.id] || '', qid: q.id, ex: u ? [u[2], u[3]] : null });
+    const extra = { m: note.m, p: note.p, qid: q.id, ex: u ? [u[2], u[3]] : null };
+    const ipa = (window.IPA || {})[q.id];
+    const e = byKey.get(key);
+    if (e) { if (!e.qid) Object.assign(e, extra, ipa ? { ipa } : {}); }
+    else put(q.level, { key, level: q.level, w: note.t, ipa: ipa || '', ...extra });
   }
-  return Object.fromEntries(Object.entries(out).map(([k, v]) => [k, [...v.values()]]));
+  return out;
 })();
 
 /* ---------- utils ---------- */
@@ -92,12 +103,19 @@ function newData() {
     xp: 0, streak: 0, longestStreak: 0, lastActive: null,
     dailyGoal: 30, daily: {}, history: [], mistakes: {}, mastered: {}, achievements: {},
     words: {},
-    stats: { answered: 0, correct: 0, lessons: 0, perfect: 0, bestCombo: 0, cleared: 0, goalsHit: 0, c2: 0, wordDrills: 0 },
+    stats: { answered: 0, correct: 0, lessons: 0, perfect: 0, bestCombo: 0, cleared: 0, goalsHit: 0, c2: 0, wordDrills: 0, spelled: 0 },
   };
 }
 function normalize(obj) {
   const d = Object.assign(newData(), obj || {});
   d.stats = Object.assign(newData().stats, d.stats);
+  const nw = {};
+  for (const [k, v] of Object.entries(d.words || {})) {
+    const nk = /^[ABC][12]:/.test(k) ? k.slice(3) : k;
+    const p = nw[nk];
+    nw[nk] = p ? { c: p.c + v.c, w: p.w + v.w, s: Math.max(p.s, v.s) } : v;
+  }
+  d.words = nw;
   return d;
 }
 const loadData = u => normalize(store.get('eq_data_' + u, {}));
@@ -288,18 +306,32 @@ function placementBlock(lvIdx) {
 
 /* ---------- word drill ---------- */
 const WORD_DRILL_SIZE = 10;
+const MASTER_AT = 3;                       // answered correctly 3 times → mastered, no longer quizzed
 const wordStat = k => data.words[k] || { c: 0, w: 0, s: 0 };
-const isLearned = k => wordStat(k).s >= 2;
-const isWeak = k => wordStat(k).w > 0 && !isLearned(k);
+const isMastered = k => wordStat(k).c >= MASTER_AT;
+const isWeak = k => wordStat(k).w > 0 && !isMastered(k);
+const isStarted = k => !!data.words[k] && !isMastered(k);
 const meaningTokens = m => m.replace(/（[^）]*）/g, '').split(/[、；，,;／/\s]+/).filter(t => t.length > 0);
 const meaningsOverlap = (a, b) => { const tb = meaningTokens(b); return meaningTokens(a).some(t => tb.includes(t)); };
-const posGroup = p => /片語/.test(p) ? 'phrase' : /名詞/.test(p) ? 'noun' : /動詞/.test(p) ? 'verb' : /形容詞/.test(p) ? 'adj' : 'other';
-let wordListOpen = false;
+const posGroup = p => /片語/.test(p) ? 'phrase' : /名詞/.test(p) ? 'noun' : /動詞/.test(p) ? 'verb' : /形容詞/.test(p) ? 'adj' : /副詞/.test(p) ? 'adv' : 'other';
+const normSpell = s => String(s).toLowerCase().replace(/[’‘`]/g, "'").replace(/[^a-z' -]/g, '').replace(/\s+/g, ' ').trim();
+let wl = { open: false, filter: 'all', q: '', limit: 100 };
 
 function wordItem(word, dir) {
-  const ok = x => x.key !== word.key && x.w.toLowerCase() !== word.w.toLowerCase() && !meaningsOverlap(x.m, word.m);
-  const pool = shuffle((WORDS[word.level] || []).filter(ok));
-  const ordered = [...pool.filter(x => posGroup(x.p) === posGroup(word.p)), ...pool];
+  const base = {
+    id: 'w|' + word.key + '|' + dir, level: word.level, skill: 'words', dir, word, noteId: word.qid,
+    prompt: dir === 'e2z' ? word.w : word.m, answer: 0, explain: `${word.w}（${word.p}）＝ ${word.m}`, example: word.ex,
+  };
+  if (dir === 'spell') return { q: { ...base, options: [] }, retry: false, opts: [] };
+  const list = WORDS[word.level] || [];
+  const ok = x => x.key !== word.key && !meaningsOverlap(x.m, word.m);
+  // sample candidates instead of shuffling thousands of words
+  const cands = [];
+  for (let tries = 0; tries < 400 && cands.length < 40; tries++) {
+    const x = list[Math.floor(Math.random() * list.length)];
+    if (ok(x) && !cands.includes(x)) cands.push(x);
+  }
+  const ordered = [...cands.filter(x => posGroup(x.p) === posGroup(word.p)), ...cands];
   const picks = [];
   for (const x of ordered) {
     if (picks.length === 3) break;
@@ -308,59 +340,77 @@ function wordItem(word, dir) {
     picks.push(x);
   }
   const options = dir === 'e2z' ? [word.m, ...picks.map(x => x.m)] : [word.w, ...picks.map(x => x.w)];
-  return prep({
-    id: 'w|' + word.key + '|' + dir, level: word.level, skill: 'words', dir, word, noteId: word.qid,
-    prompt: dir === 'e2z' ? word.w : word.m, options, answer: 0,
-    explain: `${word.w}（${word.p}）＝ ${word.m}`, example: word.ex,
-  });
+  return prep({ ...base, options });
 }
 function startWords(dir, weakOnly = false) {
-  let list = WORDS[data.level] || [];
+  let list = (WORDS[data.level] || []).filter(w => !isMastered(w.key));
   if (weakOnly) list = list.filter(w => isWeak(w.key));
-  const order = [
-    ...shuffle(list.filter(w => isWeak(w.key))),
-    ...shuffle(list.filter(w => !isWeak(w.key) && !isLearned(w.key))),
-    ...shuffle(list.filter(w => isLearned(w.key))),
-  ];
-  const pick = order.slice(0, WORD_DRILL_SIZE);
-  if (!pick.length) return;
-  const items = shuffle(pick).map(w => wordItem(w, dir === 'mix' ? (Math.random() < 0.5 ? 'e2z' : 'z2e') : dir));
+  // weak words first, then ones already started, then new words
+  const weak = shuffle(list.filter(w => isWeak(w.key)));
+  const started = shuffle(list.filter(w => isStarted(w.key) && !isWeak(w.key)));
+  const fresh = [];
+  const pool = list.filter(w => !data.words[w.key]);
+  while (fresh.length < WORD_DRILL_SIZE && pool.length) fresh.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+  const pick = [...weak.slice(0, 4), ...started.slice(0, 3), ...fresh, ...weak.slice(4), ...started.slice(3)].slice(0, WORD_DRILL_SIZE);
+  if (!pick.length) { if (window.PWA) PWA.toast(`🎉 You've mastered every ${data.level} word!`); return; }
+  const dirs = { mix: () => (Math.random() < 0.5 ? 'e2z' : 'z2e') };
+  const items = shuffle(pick).map(w => wordItem(w, dirs[dir] ? dirs[dir]() : dir));
   S = base('words', items);
   S.level = data.level; S.skill = 'words'; S.dir = dir;
   render();
 }
-function viewWords() {
-  const lv = data.level;
-  const list = WORDS[lv] || [];
-  const learned = list.filter(w => isLearned(w.key)).length;
-  const weak = list.filter(w => isWeak(w.key)).length;
-  const pct = list.length ? Math.round((learned / list.length) * 100) : 0;
-  const btn = (dir, icon, title, sub) => `<button class="skill ${dir === 'z2e' ? 'purple' : dir === 'mix' ? 'orange' : 'blue'}" data-act="words" data-dir="${dir}">
-      <div class="skill-icon">${icon}</div>
-      <div class="skill-main"><div class="skill-name">${title}</div><div class="skill-sub">${sub}</div></div>
-      <div class="skill-go">▶</div></button>`;
-  const dots = k => { const s = Math.min(wordStat(k).s, 2); return `<span class="dots" title="${isLearned(k) ? 'Learned' : 'Learning'}">${'●'.repeat(s)}${'○'.repeat(2 - s)}</span>`; };
-  const rows = list.map(w => `<div class="wl-row ${isLearned(w.key) ? 'learned' : isWeak(w.key) ? 'weak' : ''}">
+function wordRowsHtml() {
+  const list = WORDS[data.level] || [];
+  const q = wl.q.trim().toLowerCase();
+  const rows = list.filter(w => {
+    if (wl.filter === 'mastered' && !isMastered(w.key)) return false;
+    if (wl.filter === 'learning' && !isStarted(w.key)) return false;
+    if (wl.filter === 'new' && data.words[w.key]) return false;
+    return !q || w.w.toLowerCase().includes(q) || w.m.includes(wl.q.trim());
+  });
+  const dots = k => { const c = Math.min(wordStat(k).c, MASTER_AT); return `<span class="dots" title="${c}/${MASTER_AT}">${'●'.repeat(c)}${'○'.repeat(MASTER_AT - c)}</span>`; };
+  const html = rows.slice(0, wl.limit).map(w => `<div class="wl-row ${isMastered(w.key) ? 'learned' : isWeak(w.key) ? 'weak' : ''}">
       ${sayBtn(w.w, 'mini')}
       <div class="wl-main"><div><b>${esc(w.w)}</b> <span class="ipa small">${esc(w.ipa)}</span></div><div class="muted small">${esc(w.p)}・${esc(w.m)}</div></div>
       ${dots(w.key)}</div>`).join('');
+  return `<div class="muted small wl-count">${rows.length} word${rows.length === 1 ? '' : 's'}</div>${html || '<div class="muted small">No words found.</div>'}
+    ${rows.length > wl.limit ? `<button class="btn btn-ghost" data-act="wlMore">Show more (${rows.length - wl.limit} left)</button>` : ''}`;
+}
+function viewWords() {
+  const lv = data.level;
+  const list = WORDS[lv] || [];
+  const mastered = list.filter(w => isMastered(w.key)).length;
+  const learning = list.filter(w => isStarted(w.key)).length;
+  const weak = list.filter(w => isWeak(w.key)).length;
+  const pct = list.length ? Math.round((mastered / list.length) * 100) : 0;
+  const btn = (dir, color, icon, title, sub) => `<button class="skill ${color}" data-act="words" data-dir="${dir}">
+      <div class="skill-icon">${icon}</div>
+      <div class="skill-main"><div class="skill-name">${title}</div><div class="skill-sub">${sub}</div></div>
+      <div class="skill-go">▶</div></button>`;
+  const chip = (f, label) => `<button class="chip-btn ${wl.filter === f ? 'on' : ''}" data-act="wlFilter" data-f="${f}">${label}</button>`;
   return `
   <section class="card words-head">
-    <div class="goal-head"><b>🔤 Word Drill · ${lv} ${esc(LEVEL_INFO[lv].name)}</b><span>${learned} / ${list.length} learned</span></div>
+    <div class="goal-head"><b>🔤 ${lv} ${esc(LEVEL_INFO[lv].name)} · ${list.length.toLocaleString()} words</b><span>${mastered} mastered</span></div>
     <div class="bar"><div style="width:${pct}%"></div></div>
-    <div class="fine left">Answer a word correctly twice in a row to mark it as learned. Words you miss come back first.</div>
+    <div class="fine left">✅ ${mastered} mastered · 📖 ${learning} learning · 🆕 ${(list.length - mastered - learning).toLocaleString()} new<br>A word is mastered after ${MASTER_AT} correct answers and won't be quizzed again.</div>
   </section>
   <section class="skills">
-    ${btn('e2z', '🇬🇧', 'English → 中文', `See the word, pick the Chinese meaning · ${WORD_DRILL_SIZE} words`)}
-    ${btn('z2e', '🇹🇼', '中文 → English', `看中文，選出英文單字 · ${WORD_DRILL_SIZE} words`)}
-    ${btn('mix', '🔀', 'Mixed', 'Both directions, shuffled')}
+    ${btn('e2z', 'blue', '🇬🇧', 'English → 中文', `看英文選中文 · ${WORD_DRILL_SIZE} words`)}
+    ${btn('z2e', 'purple', '🇹🇼', '中文 → English', `看中文選英文 · ${WORD_DRILL_SIZE} words`)}
+    ${btn('spell', 'green', '⌨️', 'Spelling 拼字', `看中文，自己打出英文 · ${WORD_DRILL_SIZE} words`)}
+    ${btn('mix', 'orange', '🔀', 'Mixed', 'English ⇄ 中文, shuffled')}
   </section>
   ${weak ? `<button class="btn btn-ghost" data-act="words" data-dir="mix" data-weak="1">🔁 Practice weak words (${weak})</button>` : ''}
   <div class="row words-tools">
-    <button class="link" data-act="wordList">${wordListOpen ? '▾ Hide word list' : '▸ Show word list'} (${list.length})</button>
+    <button class="link" data-act="wordList">${wl.open ? '▾ Hide word list' : '▸ Word list'}</button>
     <button class="link" data-act="autospeak">${autoSpeak() ? '🔊 Auto-play: On' : '🔇 Auto-play: Off'}</button>
   </div>
-  ${wordListOpen ? `<section class="card word-list">${rows}</section>` : ''}`;
+  ${wl.open ? `<section class="card word-list">
+    <input id="wordSearch" class="search" type="search" placeholder="Search English or 中文…" value="${esc(wl.q)}" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <div class="chips">${chip('all', 'All')}${chip('new', '🆕 New')}${chip('learning', '📖 Learning')}${chip('mastered', '✅ Mastered')}</div>
+    <div id="wordRows">${wordRowsHtml()}</div>
+  </section>` : ''}
+  <p class="fine">Word lists: CEFR-J Wordlist 1.5 (Tono Laboratory, TUFS) · Octanove Vocabulary Profile C1/C2 (CC BY-SA 4.0) · Meanings &amp; phonetics: ECDICT (MIT), converted to Traditional Chinese.</p>`;
 }
 
 function startLesson(skill) {
@@ -391,7 +441,8 @@ function checkWord(item, ok) {
     data.stats.correct++;
     w.c++; w.s++;
     S.combo++; S.bestCombo = Math.max(S.bestCombo, S.combo);
-    S.xp += item.retry ? 2 : 5;
+    S.xp += item.retry ? 2 : item.q.dir === 'spell' ? (S.hint > 1 ? 4 : 8) : 5;
+    if (item.q.dir === 'spell') data.stats.spelled++;
     if (!item.retry) S.firstTry++;
   } else {
     w.w++; w.s = 0;
@@ -402,13 +453,18 @@ function checkWord(item, ok) {
   data.stats.bestCombo = Math.max(data.stats.bestCombo, S.bestCombo);
   save();
   if (navigator.vibrate && !ok) { try { navigator.vibrate(60); } catch { /* ignore */ } }
-  if (item.q.dir === 'z2e') TTS.speak(item.q.word.w);   // hear the English word after answering
+  if (item.q.dir !== 'e2z') TTS.speak(item.q.word.w);   // hear the English word after answering
   render();
 }
 function check() {
-  if (!S || S.checked || S.sel == null) return;
+  if (!S || S.checked) return;
+  if (S.items[S.i].q.dir === 'spell') {
+    const typed = (document.getElementById('spellInput') || {}).value || S.typed || '';
+    if (!normSpell(typed)) return;
+    S.typed = typed;
+  } else if (S.sel == null) return;
   const item = S.items[S.i];
-  const ok = item.opts[S.sel].ok;
+  const ok = item.q.dir === 'spell' ? normSpell(S.typed) === normSpell(item.q.word.w) : item.opts[S.sel].ok;
   const id = item.q.id;
   S.checked = true; S.ok = ok;
   data.stats.answered++;
@@ -452,7 +508,7 @@ function next() {
   } else if (S.mode === 'lesson' && S.hearts <= 0) {
     return finishLesson(true);
   }
-  S.i++; S.sel = null; S.checked = false; S.ok = null;
+  S.i++; S.sel = null; S.checked = false; S.ok = null; S.typed = ''; S.hint = 1;
   if (S.i >= S.items.length) return S.mode === 'placement' ? finishPlacement() : finishLesson(false);
   render();
 }
@@ -572,7 +628,7 @@ function renderQuiz() {
   let progress;
   if (S.mode === 'placement') progress = ((S.p.lv * 3 + S.p.blockCount + (S.checked ? 1 : 0)) / 18) * 100;
   else progress = ((S.i + (S.checked ? 1 : 0)) / S.items.length) * 100;
-  const tag = S.mode === 'words' ? `${q.level} · Word Drill · ${q.dir === 'e2z' ? 'English → 中文' : '中文 → English'}`
+  const tag = S.mode === 'words' ? `${q.level} · Word Drill · ${q.dir === 'e2z' ? 'English → 中文' : q.dir === 'spell' ? 'Spelling 拼字' : '中文 → English'}`
     : S.mode === 'placement' ? `Placement · Level ${q.level}`
     : S.mode === 'review' ? `Review · ${q.level} ${SKILLS[q.skill].name}`
     : `${q.level} · ${SKILLS[q.skill].name}`;
@@ -585,7 +641,7 @@ function renderQuiz() {
     else if (i === S.sel) cls += ' selected';
     return `<button class="${cls}" data-act="pick" data-i="${i}" ${S.checked ? 'disabled' : ''}><span class="key">${i + 1}</span><span>${esc(o.t)}</span></button>`;
   }).join('');
-  const right = item.opts.find(o => o.ok).t;
+  const right = (item.opts.find(o => o.ok) || { t: q.word ? q.word.w : '' }).t;
   const foot = S.checked
     ? `<footer class="quiz-foot ${S.ok ? 'is-ok' : 'is-bad'}">
         <div class="fb">
@@ -599,7 +655,7 @@ function renderQuiz() {
         </div>
         <button class="btn ${S.ok ? 'btn-green' : 'btn-red'}" data-act="next" autofocus>Continue</button>
       </footer>`
-    : `<footer class="quiz-foot"><div class="fb"></div><button class="btn btn-green" data-act="check" ${S.sel == null ? 'disabled' : ''}>Check</button></footer>`;
+    : `<footer class="quiz-foot"><div class="fb"></div><button class="btn btn-green" data-act="check" ${(q.dir === 'spell' ? !normSpell(S.typed || '') : S.sel == null) ? 'disabled' : ''}>Check</button></footer>`;
   app.innerHTML = `
   <div class="quiz">
     <header class="quiz-top">
@@ -611,12 +667,42 @@ function renderQuiz() {
       ${item.retry ? '<div class="retry">↺ Previous mistake</div>' : ''}
       <div class="tag">${esc(tag)}</div>
       ${q.word ? wordPrompt(q) : `<h2 class="prompt">${blankify(q.prompt)}</h2>`}
-      <div class="opts">${opts}</div>
+      ${q.dir === 'spell' ? spellBox(q) : `<div class="opts">${opts}</div>`}
     </main>
     ${foot}
   </div>`;
   // English → 中文: read the new word aloud once when it appears
   if (S.mode === 'words' && !S.checked && q.dir === 'e2z' && S.spokenAt !== S.i && autoSpeak()) { S.spokenAt = S.i; TTS.speak(q.word.w); }
+  const si = document.getElementById('spellInput');
+  if (si) { si.focus(); const n = si.value.length; try { si.setSelectionRange(n, n); } catch { /* ignore */ } }
+}
+function spellHint(w, n) {
+  let shown = 0;
+  return [...w].map(ch => (/[a-z]/i.test(ch) ? (shown++ < n ? ch : '_') : ch === ' ' ? '\u00a0' : ch)).join(' ');
+}
+function diffHtml(typed, correct) {
+  const a = [...typed.trim()], b = [...correct];
+  const len = Math.max(a.length, b.length);
+  let out = '';
+  for (let i = 0; i < len; i++) {
+    const t = a[i], c = b[i];
+    if (t === undefined) out += '<span class="d-miss">_</span>';
+    else out += `<span class="${c !== undefined && t.toLowerCase() === c.toLowerCase() ? 'd-ok' : 'd-bad'}">${esc(t)}</span>`;
+  }
+  return out;
+}
+function spellBox(q) {
+  const w = q.word.w;
+  if (S.checked) {
+    return `<div class="spell-box"><div class="muted small">Your answer</div>
+      <div class="spell-typed">${S.ok ? `<span class="d-ok">${esc(S.typed.trim())}</span>` : diffHtml(S.typed, w)}</div></div>`;
+  }
+  return `<div class="spell-box">
+    <div class="spell-hint" aria-label="hint">${esc(spellHint(w, S.hint || 1))}</div>
+    <input id="spellInput" class="spell-input" type="text" value="${esc(S.typed || '')}" placeholder="Type the English word…"
+      autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="done">
+    <button class="link small" data-act="hint">💡 Hint: show the next letter${(S.hint || 1) > 1 ? ' (fewer XP)' : ''}</button>
+  </div>`;
 }
 function wordPrompt(q) {
   const w = q.word;
@@ -627,7 +713,7 @@ function wordPrompt(q) {
   return `<div class="word-card">
       <div class="word-big zh">${esc(w.m)}</div>
       <div class="word-sub"><span class="pos-chip">${esc(w.p)}</span></div>
-      <div class="word-hint">Choose the English word</div></div>`;
+      <div class="word-hint">${q.dir === 'spell' ? `拼出英文單字 · ${[...w.w].filter(c => /[a-z]/i.test(c)).length} letters` : 'Choose the English word'}</div></div>`;
 }
 const autoSpeak = () => store.get('eq_autospeak', true);
 /* ---------- detailed notes (dropdown) ---------- */
@@ -704,7 +790,7 @@ function renderLessonResult() {
   const r = lastResult;
   const acc = r.total ? Math.round((r.correct / r.total) * 100) : 0;
   const head = r.failed ? ['💔', 'Out of hearts', 'Mistakes were saved to your review list. Try again!']
-    : r.mode === 'words' ? ['🔤', r.perfect ? 'Perfect word drill!' : 'Word drill complete!', `You've learned ${(WORDS[data.level] || []).filter(w => isLearned(w.key)).length} / ${(WORDS[data.level] || []).length} ${data.level} words. Get a word right twice in a row to learn it.`]
+    : r.mode === 'words' ? ['🔤', r.perfect ? 'Perfect word drill!' : 'Word drill complete!', `You've mastered ${(WORDS[data.level] || []).filter(w => isMastered(w.key)).length} / ${(WORDS[data.level] || []).length.toLocaleString()} ${data.level} words. Mastered words (${MASTER_AT}× correct) won't be quizzed again.`]
     : r.mode === 'review' ? ['🩹', 'Review complete', `You cleared ${r.cleared} question${r.cleared === 1 ? '' : 's'} from your mistakes.`]
     : r.perfect ? ['💎', 'Perfect lesson!', '+5 bonus XP for no mistakes.']
     : ['🎉', 'Lesson complete!', 'Keep the streak going.'];
@@ -941,7 +1027,16 @@ const actions = {
   review() { startReview(); },
   words(el) { startWords(el.dataset.dir, el.dataset.weak === '1'); },
   autospeak() { store.set('eq_autospeak', !autoSpeak()); render(); },
-  wordList() { wordListOpen = !wordListOpen; render(); },
+  wordList() { wl.open = !wl.open; render(); },
+  wlFilter(el) { wl.filter = el.dataset.f; wl.limit = 100; render(); },
+  wlMore() { wl.limit += 200; const box = document.getElementById('wordRows'); if (box) box.innerHTML = wordRowsHtml(); },
+  hint() {
+    if (!S || S.checked) return;
+    const si = document.getElementById('spellInput');
+    if (si) S.typed = si.value;
+    S.hint = (S.hint || 1) + 1;
+    render();
+  },
   logout() { if (confirm('Log out?')) logout(); },
   async syncNow() { clearTimeout(pushTimer); await pull(); },
   async install() {
@@ -958,6 +1053,15 @@ app.addEventListener('click', e => {
 app.addEventListener('toggle', e => {
   if (e.target.matches && e.target.matches('details.note[data-remember]')) store.set('eq_note_open', e.target.open);
 }, true);
+app.addEventListener('input', e => {
+  if (e.target.id === 'wordSearch') {
+    wl.q = e.target.value; wl.limit = 100;
+    const box = document.getElementById('wordRows'); if (box) box.innerHTML = wordRowsHtml();
+  } else if (e.target.id === 'spellInput' && S) {
+    S.typed = e.target.value;
+    const b = document.querySelector('[data-act=check]'); if (b) b.disabled = !normSpell(S.typed);
+  }
+});
 app.addEventListener('change', e => {
   if (e.target.dataset.change === 'goal') { data.dailyGoal = Number(e.target.value); save(); render(); }
 });
@@ -978,6 +1082,7 @@ app.addEventListener('submit', async e => {
   if (err) renderAuth(err);
 });
 document.addEventListener('keydown', e => {
+  if (S && e.target.id === 'spellInput' && e.key === 'Enter') { e.preventDefault(); S.checked ? next() : check(); return; }
   if (!S || e.target.tagName === 'INPUT') return;
   if (!S.checked && /^[1-4]$/.test(e.key)) { const i = Number(e.key) - 1; if (i < S.items[S.i].opts.length) { S.sel = i; render(); } }
   else if (e.key === 'Enter') { e.preventDefault(); S.checked ? next() : check(); }

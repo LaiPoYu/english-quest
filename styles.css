@@ -323,3 +323,22 @@ h1, h2, h3 { margin: 0; font-weight: 900; }
 .wl-row.learned b { color: var(--green-d); }
 .dots { color: var(--green); letter-spacing: 2px; font-size: 13px; flex: none; }
 .tab { max-width: 160px; }
+
+/* big dictionary word list + spelling */
+.skill.green .skill-icon { background: var(--green); box-shadow: 0 3px 0 var(--green-d); }
+.search { width: 100%; border: 2px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: 16px; background: var(--surface-2); color: var(--text); }
+.search:focus { outline: none; border-color: var(--blue); }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 4px; }
+.chip-btn { border: 2px solid var(--line); background: var(--surface); border-radius: 99px; padding: 4px 12px; font-size: 13px; font-weight: 800; color: var(--muted); }
+.chip-btn.on { border-color: var(--blue); color: var(--blue); background: var(--blue-bg); }
+.wl-count { margin: 6px 0; }
+.word-list .btn { margin-top: 10px; }
+.spell-box { display: flex; flex-direction: column; gap: 10px; align-items: stretch; }
+.spell-hint { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 22px; font-weight: 700; letter-spacing: 2px; text-align: center; color: var(--muted); word-break: break-all; }
+.spell-input { width: 100%; border: 2px solid var(--line); border-radius: 14px; padding: 14px; font-size: 20px; font-weight: 700; background: var(--surface-2); color: var(--text); text-align: center; }
+.spell-input:focus { outline: none; border-color: var(--blue); background: var(--surface); }
+.spell-box .link { align-self: center; }
+.spell-typed { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 24px; font-weight: 800; text-align: center; letter-spacing: 1px; word-break: break-all; }
+.d-ok { color: var(--green-d); }
+.d-bad { color: var(--red); text-decoration: underline wavy; }
+.d-miss { color: var(--red); }
