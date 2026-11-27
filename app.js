@@ -470,7 +470,8 @@ function renderQuiz() {
     ? `<footer class="quiz-foot ${S.ok ? 'is-ok' : 'is-bad'}">
         <div class="fb">
           <div class="fb-title">${S.ok ? (S.combo >= 3 ? `🔥 ${S.combo} in a row!` : pickPraise()) : 'Not quite'}</div>
-          ${S.ok ? '' : `<div class="fb-ans">Correct answer: <b>${esc(right)}</b></div>`}
+          <div class="fb-ans">${S.ok ? '✓ ' : 'Correct answer: '}<b>${esc(right)}</b> ${sayBtn(right)}</div>
+          ${sentenceRow(q)}
           <div class="fb-ex">${esc(q.explain)}</div>
           ${noteHtml(q)}
         </div>
@@ -500,8 +501,8 @@ function noteHtml(q, remember = true) {
   const isGrammar = n.p.startsWith('文法');
   const head = isGrammar
     ? `<b class="n-word">${esc(n.t)}</b>（${esc(n.p)}）：<b>${esc(n.m)}</b>`
-    : `<b class="n-word">${esc(n.t)}</b>（${esc(n.p)}${n.f ? `，${n.p.includes('動詞') ? '三態' : '變化'}為 <i>${esc(n.f)}</i>` : ''}）的中文意思是<b>${esc(n.m)}</b>。`;
-  const ex = (e, zh) => `<div class="n-ex"><i>${esc(e)}</i>（${esc(zh)}）</div>`;
+    : `<b class="n-word">${esc(n.t)}</b>${window.IPA && IPA[q.id] ? ` <span class="ipa">${esc(IPA[q.id])}</span>` : ''} ${sayBtn(n.t)}（${esc(n.p)}${n.f ? `，${n.p.includes('動詞') ? '三態' : '變化'}為 <i>${esc(n.f)}</i>` : ''}）的中文意思是<b>${esc(n.m)}</b>。`;
+  const ex = (e, zh) => `<div class="n-ex">${/[A-Za-z]{2}/.test(e) ? sayBtn(e, 'mini') : ''}<i>${esc(e)}</i>（${esc(zh)}）</div>`;
   let html = `<div class="n-head">${head}</div>`;
   if (n.u && n.u.length) html += `<h4>${isGrammar ? '句型結構' : '核心用法與句型'}</h4><ul>${n.u.map(([pat, d, e, zh]) => `<li><b>${esc(pat)}</b>：${esc(d)}${ex(e, zh)}</li>`).join('')}</ul>`;
   if (n.o && n.o.length) html += `<h4>${isGrammar ? '延伸用法' : '其他常見意思'}</h4><ul>${n.o.map(([d, e, zh]) => `<li><b>${esc(d)}</b>${ex(e, zh)}</li>`).join('')}</ul>`;
@@ -509,6 +510,44 @@ function noteHtml(q, remember = true) {
   if (n.tip) html += `<h4>小提醒</h4><p class="n-tip">💡 ${esc(n.tip)}</p>`;
   const open = remember && store.get('eq_note_open', false) ? ' open' : '';
   return `<details class="note"${open}${remember ? ' data-remember="1"' : ''}><summary>📖 詳細解說</summary><div class="note-body">${html}</div></details>`;
+}
+
+/* ---------- pronunciation (built-in text-to-speech) + translation ---------- */
+const TTS = (() => {
+  const ok = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
+  let voice = null;
+  const pick = () => {
+    const vs = speechSynthesis.getVoices();
+    voice = vs.find(v => /^en[-_]US/i.test(v.lang) && /Samantha|Google US|Aria|Jenny|Ava|Allison/i.test(v.name))
+      || vs.find(v => /^en[-_]US/i.test(v.lang)) || vs.find(v => /^en/i.test(v.lang)) || null;
+  };
+  if (ok) { pick(); speechSynthesis.addEventListener && speechSynthesis.addEventListener('voiceschanged', pick); }
+  return {
+    ok,
+    speak(text, slow) {
+      if (!ok) return;
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'en-US';
+      if (voice) u.voice = voice;
+      u.rate = slow ? 0.6 : 0.95;
+      speechSynthesis.speak(u);
+    },
+  };
+})();
+const sayBtn = (text, cls = '', slow = false) => TTS.ok
+  ? `<button class="say ${cls}" data-act="say" data-text="${esc(text)}" data-slow="${slow ? 1 : 0}" aria-label="${slow ? 'Play slowly' : 'Play'}" title="${slow ? 'Slow' : 'Listen'}">${slow ? '🐢' : '🔊'}</button>`
+  : '';
+const fullSentence = q => q.prompt.includes('___') ? q.prompt.replace(/___/g, q.options[q.answer]) : null;
+function sentenceRow(q, compact = false) {
+  const full = fullSentence(q);
+  const zh = window.TRANS && TRANS[q.id];
+  if (!full && !zh) return '';
+  return `<div class="sent ${compact ? 'compact' : ''}">
+    ${full && !compact ? `<div class="sent-en">${sayBtn(full)}${sayBtn(full, '', true)}<span>${esc(full)}</span></div>` : ''}
+    ${full && compact ? `<div class="sent-en">${sayBtn(full, 'mini')}<span>${esc(full)}</span></div>` : ''}
+    ${zh ? `<div class="sent-zh">🇹🇼 ${esc(zh)}</div>` : ''}
+  </div>`;
 }
 
 const PRAISE = ['Nice!', 'Correct!', 'Great job!', 'Awesome!', 'You got it!'];
@@ -636,7 +675,8 @@ function viewReview() {
     return `<div class="card mistake">
       <div class="m-top"><span class="tag">${q.level} · ${SKILLS[q.skill].name}</span><span class="m-count">✗ ${m.count}</span></div>
       <div class="m-q">${blankify(q.prompt)}</div>
-      <div class="m-a">✓ ${esc(q.options[q.answer])}</div>
+      <div class="m-a">✓ ${esc(q.options[q.answer])} ${sayBtn(q.options[q.answer], 'mini')}</div>
+      ${sentenceRow(q, true)}
       <div class="m-ex muted small">${esc(q.explain)}</div>
       ${noteHtml(q, false)}
     </div>`;
@@ -743,6 +783,10 @@ const actions = {
   placement() { startPlacement(); },
   skipPlacement() { data.placementDone = true; save(); sheet = 'levels'; render(); },
   pick(el) { if (S && !S.checked) { S.sel = Number(el.dataset.i); render(); } },
+  say(el) {
+    TTS.speak(el.dataset.text, el.dataset.slow === '1');
+    el.classList.add('playing'); setTimeout(() => el.classList.remove('playing'), 900);
+  },
   check, next, quit,
   done() { lastResult = null; render(); },
   openLevels() { lastResult = null; sheet = 'levels'; render(); },

@@ -284,3 +284,24 @@ h1, h2, h3 { margin: 0; font-weight: 900; }
 /* cloud sync */
 .info { background: var(--blue-bg); color: var(--blue); border-radius: 10px; padding: 10px; font-size: 14px; }
 .sync-row #syncStatus { text-align: right; max-width: 70%; }
+
+/* pronunciation buttons + translation */
+.say {
+  display: inline-grid; place-items: center; width: 34px; height: 34px; margin: 0 4px; vertical-align: middle;
+  border: 2px solid var(--blue); border-radius: 10px; background: var(--surface); color: var(--blue);
+  font-size: 16px; line-height: 1; padding: 0; box-shadow: 0 2px 0 var(--blue-d); flex: none;
+}
+.say:active, .say.playing { transform: translateY(2px); box-shadow: none; background: var(--blue-bg); }
+.say.mini { width: 26px; height: 26px; font-size: 13px; border-radius: 8px; margin: 0 6px 0 0; }
+.ipa { color: var(--muted); font-weight: 600; font-family: 'Lucida Sans Unicode', 'Arial Unicode MS', system-ui, sans-serif; }
+.sent { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 14px; background: var(--surface-2); border: 2px solid var(--line); }
+.sent-en { display: flex; align-items: center; gap: 4px; font-size: 16px; font-weight: 800; }
+.sent-en span { margin-left: 4px; }
+.sent-zh { font-size: 16px; font-weight: 700; color: var(--text); }
+.sent.compact { padding: 8px 10px; gap: 4px; }
+.sent.compact .sent-en, .sent.compact .sent-zh { font-size: 14px; font-weight: 600; }
+.n-ex { display: flex; align-items: flex-start; flex-wrap: wrap; }
+.n-ex .say.mini { margin-top: 1px; }
+.fb-ans .say { width: 30px; height: 30px; font-size: 14px; }
+.quiz-foot .sent { margin-top: 10px; background: var(--surface); color: var(--text); }
+.quiz-foot .sent-en { color: var(--text); }

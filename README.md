@@ -38,13 +38,14 @@ How sync works: every change is saved on the device first, then uploaded about 1
 - **Mistakes book**: Every wrong answer is saved. Answer a question correctly in Review to clear it.
 - **Profile**: Accuracy, weekly XP chart, achievements, recent lessons, daily-goal setting, retake the placement test.
 - **Detailed notes (📖 詳細解說)**: After each answer, a dropdown shows the Chinese meaning, forms, core patterns with example sentences and translations, other meanings, how the other options differ, and tips. Notes are also in the Mistakes book. The app remembers whether you like it open.
+- **Pronunciation + translation**: After each answer you can tap 🔊 to hear the answer and the full sentence (🐢 plays it slowly) and see the Chinese translation. The notes add IPA phonetics and a 🔊 for each example. Audio uses the device's built-in English voice, so it works offline.
 - Keyboard: press `1`–`4` to choose an answer and `Enter` to check or continue.
 
 ## Files
 - `index.html`: entry page
 - `styles.css`: styles (supports dark mode, works on phone and desktop)
 - `questions.js`: question bank (6 levels × 2 skills × 10 questions = 120 questions)
-- `notes.js`: detailed Chinese study notes for every question (keyed by question id, e.g. `A2-v6`)
+- `notes.js`: detailed Chinese study notes, IPA (`IPA`), and Chinese translations (`TRANS`) for every question, keyed by question id (e.g. `A2-v6`)
 - `app.js`: app logic, including cloud login and sync
 - `config.js`: Supabase URL + anon key (empty = local-only mode)
 - `supabase/schema.sql`: database table and security rules
