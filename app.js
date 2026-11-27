@@ -76,12 +76,19 @@ function newData() {
     stats: { answered: 0, correct: 0, lessons: 0, perfect: 0, bestCombo: 0, cleared: 0, goalsHit: 0, c2: 0 },
   };
 }
-function loadData(u) {
-  const d = Object.assign(newData(), store.get('eq_data_' + u, {}));
+function normalize(obj) {
+  const d = Object.assign(newData(), obj || {});
   d.stats = Object.assign(newData().stats, d.stats);
   return d;
 }
-const save = () => user && store.set('eq_data_' + user, data);
+const loadData = u => normalize(store.get('eq_data_' + u, {}));
+// Every change stamps updatedAt, saves locally, then (in cloud mode) syncs shortly after.
+function save() {
+  if (!user) return;
+  data.updatedAt = Date.now();
+  store.set('eq_data_' + user, data);
+  schedulePush();
+}
 const currentStreak = () => (!data.lastActive || daysBetween(data.lastActive, today()) > 1) ? 0 : data.streak;
 const todayXp = () => data.daily[today()] || 0;
 
@@ -107,8 +114,142 @@ function login(key) {
   user = key; data = loadData(key); store.set('eq_session', key); tab = 'learn';
   render();
 }
-function logout() { store.del('eq_session'); user = null; data = null; S = null; render(); }
-const displayName = () => (store.get('eq_users', {})[user] || {}).display || user;
+async function logout() {
+  if (CLOUD && cloudUser) { try { await CLOUD.auth.signOut(); } catch { /* offline: local sign-out still happens */ } }
+  clearTimeout(pushTimer);
+  store.del('eq_session'); store.del('eq_cloud_last');
+  user = null; data = null; S = null; cloudUser = null; lastResult = null; sheet = null; setSync('idle');
+  render();
+}
+function displayName() {
+  if (cloudUser) return (cloudUser.user_metadata && cloudUser.user_metadata.username) || (cloudUser.email || 'learner').split('@')[0];
+  return (store.get('eq_users', {})[user] || {}).display || user;
+}
+
+/* ---------- cloud accounts + sync (Supabase) ---------- */
+// Enabled when config.js has a Supabase URL + anon key. Otherwise the app stays in local-only mode.
+const CLOUD = (() => {
+  const c = window.EQ_CONFIG || {};
+  if (!c.supabaseUrl || !c.supabaseAnonKey || !window.supabase) return null;
+  try { return window.supabase.createClient(c.supabaseUrl, c.supabaseAnonKey, { auth: { persistSession: true, autoRefreshToken: true } }); }
+  catch (err) { console.warn('Supabase init failed', err); return null; }
+})();
+let cloudUser = null;
+let sync = { state: 'idle', at: null, err: '' };
+let pushTimer = null;
+let pulling = false;
+
+function setSync(state, err = '') {
+  sync = { state, at: state === 'synced' ? new Date() : sync.at, err };
+  const el = document.getElementById('syncStatus');
+  if (el) el.innerHTML = syncLabel();
+}
+function syncLabel() {
+  if (!CLOUD) return '📱 This device only';
+  const t = sync.at ? ` · ${pad(sync.at.getHours())}:${pad(sync.at.getMinutes())}` : '';
+  return ({
+    idle: '☁️ Cloud', syncing: '🔄 Syncing…', synced: `✅ Synced${t}`,
+    offline: '📴 Offline. Will sync when online', error: `⚠️ Sync failed${sync.err ? ': ' + esc(sync.err) : ''}`,
+  })[sync.state] || '';
+}
+
+async function cloudRegister(email, name, pw) {
+  if (!/^[A-Za-z0-9_]{3,20}$/.test(name)) return 'Username: 3–20 letters, numbers or _.';
+  if (pw.length < 6) return 'Password must be at least 6 characters.';
+  const { data: r, error } = await CLOUD.auth.signUp({ email, password: pw, options: { data: { username: name } } });
+  if (error) return error.message;
+  if (!r.session) { authMode = 'login'; renderAuth('', 'Account created! Check your email and click the confirmation link, then log in here.'); return null; }
+  await cloudLogin(r.user);
+  return null;
+}
+async function cloudSignIn(email, pw) {
+  const { data: r, error } = await CLOUD.auth.signInWithPassword({ email, password: pw });
+  if (error) return /invalid login/i.test(error.message) ? 'Wrong email or password.' : error.message;
+  await cloudLogin(r.user);
+  return null;
+}
+async function cloudLogin(u) {
+  cloudUser = u;
+  user = 'sb_' + u.id;
+  data = loadData(user);
+  tab = 'learn';
+  store.set('eq_cloud_last', { id: u.id, email: u.email, user_metadata: u.user_metadata || {} });
+  render();
+  await pull({ first: true });
+}
+
+// Download the cloud copy; newest copy wins (by updatedAt).
+async function pull({ first = false } = {}) {
+  if (!CLOUD || !cloudUser || pulling) return;
+  if (!navigator.onLine) return setSync('offline');
+  pulling = true; setSync('syncing');
+  try {
+    const { data: row, error } = await CLOUD.from('progress').select('data').eq('user_id', cloudUser.id).maybeSingle();
+    if (error) throw error;
+    const remote = row && row.data;
+    const localT = data.updatedAt || 0;
+    if (!remote) {
+      if (first) maybeImportLegacy();
+      pulling = false; return push();
+    }
+    const remoteT = remote.updatedAt || 0;
+    if (remoteT > localT) {
+      if (S) { setSync('synced'); return; }          // never swap data in the middle of a lesson
+      data = normalize(remote);
+      store.set('eq_data_' + user, data);
+      setSync('synced');
+      render();
+    } else if (remoteT < localT) {
+      pulling = false; return push();
+    } else setSync('synced');
+  } catch (err) {
+    setSync('error', friendlyErr(err));
+  } finally { pulling = false; }
+}
+async function push() {
+  if (!CLOUD || !cloudUser) return;
+  if (!navigator.onLine) return setSync('offline');
+  setSync('syncing');
+  try {
+    const { error } = await CLOUD.from('progress').upsert({ user_id: cloudUser.id, data, updated_at: new Date().toISOString() });
+    if (error) throw error;
+    setSync('synced');
+  } catch (err) { setSync('error', friendlyErr(err)); }
+}
+function schedulePush() {
+  if (!CLOUD || !cloudUser) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(() => { pushTimer = null; push(); }, 1500);
+}
+function friendlyErr(err) {
+  const m = (err && (err.message || err.error_description)) || String(err);
+  if (/jwt|token|auth/i.test(m)) return 'please log out and log in again';
+  if (/fetch|network/i.test(m)) return 'network problem';
+  if (/relation .*progress|does not exist/i.test(m)) return 'database table missing (run supabase/schema.sql)';
+  return m.slice(0, 80);
+}
+// First cloud login on a device that has old local-only progress → offer to bring it along.
+function maybeImportLegacy() {
+  if (data.placementDone || data.xp > 0) return;
+  const users = store.get('eq_users', {});
+  let best = null;
+  for (const k of Object.keys(users)) {
+    const d = store.get('eq_data_' + k, null);
+    if (d && (d.xp > 0 || d.placementDone) && (!best || d.xp > best.d.xp)) best = { k, d, name: users[k].display || k };
+  }
+  if (!best) return;
+  if (!confirm(`This device has progress from your old local account "${best.name}" (${best.d.xp} XP, level ${best.d.level}).\n\nImport it into your cloud account?`)) return;
+  data = normalize(best.d);
+  data.updatedAt = Date.now();
+  store.set('eq_data_' + user, data);
+  render();
+}
+window.addEventListener('online', () => pull());
+// Coming back to the app → fetch changes from the other device. Leaving → send pending changes now.
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) return pull();
+  if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; push(); }
+});
 
 /* ---------- quiz engine ---------- */
 const prep = (q, retry = false) => ({ q, retry, opts: shuffle(q.options.map((t, i) => ({ t, ok: i === q.answer }))) });
@@ -264,8 +405,14 @@ function render() {
 }
 
 let authMode = 'login';
-function renderAuth(err = '') {
+function renderAuth(err = '', info = '') {
   const reg = authMode === 'register';
+  const fields = CLOUD
+    ? `<label>Email<input name="e" type="email" autocomplete="email" required></label>
+       ${reg ? '<label>Username<input name="u" autocomplete="nickname" required maxlength="20" placeholder="Shown on your profile"></label>' : ''}
+       <label>Password<input name="p" type="password" autocomplete="${reg ? 'new-password' : 'current-password'}" required minlength="6"></label>`
+    : `<label>Username<input name="u" autocomplete="username" required maxlength="20"></label>
+       <label>Password<input name="p" type="password" autocomplete="${reg ? 'new-password' : 'current-password'}" required></label>`;
   app.innerHTML = `
   <div class="center-screen">
     <div class="auth">
@@ -273,15 +420,18 @@ function renderAuth(err = '') {
       <h1>English Quest</h1>
       <p class="muted">Bite-sized vocabulary &amp; grammar, A1 to C2.</p>
       <form id="authForm" class="card form">
-        <label>Username<input name="u" autocomplete="username" required maxlength="20"></label>
-        <label>Password<input name="p" type="password" autocomplete="${reg ? 'new-password' : 'current-password'}" required></label>
+        ${fields}
         ${err ? `<div class="error">${esc(err)}</div>` : ''}
+        ${info ? `<div class="info">${esc(info)}</div>` : ''}
         <button class="btn btn-green" type="submit">${reg ? 'Create account' : 'Log in'}</button>
       </form>
       <button class="link" data-act="toggleAuth">${reg ? 'Already have an account? Log in' : 'New here? Create an account'}</button>
-      <p class="fine">Accounts and progress are saved in this browser on this device.</p>
+      <p class="fine">${CLOUD ? '☁️ Log in with the same email on your phone and computer. Your progress syncs automatically.' : 'Accounts and progress are saved in this browser on this device.'}</p>
     </div>
   </div>`;
+}
+function renderLoading() {
+  app.innerHTML = '<div class="center-screen"><div class="intro"><div class="logo big pop">🦉</div><p class="muted">Loading…</p></div></div>';
 }
 
 function renderPlacementIntro() {
@@ -514,7 +664,7 @@ function viewProfile() {
   return `
   <section class="profile-head">
     <div class="avatar">${esc(displayName()[0].toUpperCase())}</div>
-    <div><h2>${esc(displayName())}</h2><div class="muted small">Joined ${data.created} · Level ${data.level}</div></div>
+    <div><h2>${esc(displayName())}</h2><div class="muted small">${cloudUser && cloudUser.email ? esc(cloudUser.email) + ' · ' : ''}Joined ${data.created} · Level ${data.level}</div></div>
   </section>
   <section class="grid4">
     <div class="stat orange"><div class="s-val">🔥 ${currentStreak()}</div><div class="s-label">Day streak</div></div>
@@ -532,6 +682,8 @@ function viewProfile() {
   <section class="card settings">
     <label class="row">Daily goal <select data-change="goal">${goalOpts}</select></label>
     <div class="row">Longest streak <b>🔥 ${data.longestStreak}</b></div>
+    <div class="row sync-row"><span>Sync</span><span id="syncStatus" class="small">${syncLabel()}</span></div>
+    ${CLOUD && cloudUser ? '<button class="btn btn-ghost" data-act="syncNow">🔄 Sync now</button>' : ''}
     ${installRow()}
     <button class="btn btn-ghost" data-act="placement">Retake placement test</button>
     <button class="btn btn-ghost danger" data-act="logout">Log out</button>
@@ -600,6 +752,7 @@ const actions = {
   lesson(el) { startLesson(el.dataset.skill); },
   review() { startReview(); },
   logout() { if (confirm('Log out?')) logout(); },
+  async syncNow() { clearTimeout(pushTimer); await pull(); },
   async install() {
     if (installMode() === 'ios') { sheet = 'ios'; render(); return; }
     if (window.PWA) await window.PWA.install();
@@ -621,8 +774,16 @@ app.addEventListener('submit', async e => {
   if (e.target.id !== 'authForm') return;
   e.preventDefault();
   const f = new FormData(e.target);
-  const name = String(f.get('u')).trim(), pw = String(f.get('p'));
-  const err = authMode === 'register' ? await register(name, pw) : await signIn(name, pw);
+  const name = String(f.get('u') || '').trim(), pw = String(f.get('p')), email = String(f.get('e') || '').trim();
+  const btn = e.target.querySelector('button[type=submit]');
+  if (btn) { btn.disabled = true; btn.textContent = 'Please wait…'; }
+  let err;
+  try {
+    if (CLOUD) {
+      if (!navigator.onLine) err = 'You are offline. Connect to the internet to log in.';
+      else err = authMode === 'register' ? await cloudRegister(email, name, pw) : await cloudSignIn(email, pw);
+    } else err = authMode === 'register' ? await register(name, pw) : await signIn(name, pw);
+  } catch (ex) { err = friendlyErr(ex); }
   if (err) renderAuth(err);
 });
 document.addEventListener('keydown', e => {
@@ -632,8 +793,21 @@ document.addEventListener('keydown', e => {
 });
 
 /* ---------- boot ---------- */
-(function boot() {
-  const s = store.get('eq_session', null);
-  if (s && store.get('eq_users', {})[s]) { user = s; data = loadData(s); }
+(async function boot() {
+  if (!CLOUD) {
+    const s = store.get('eq_session', null);
+    if (s && store.get('eq_users', {})[s]) { user = s; data = loadData(s); }
+    return render();
+  }
+  renderLoading();
+  let session = null;
+  try { session = (await CLOUD.auth.getSession()).data.session; } catch { /* offline */ }
+  if (session) return cloudLogin(session.user);
+  // Offline with an expired token: keep the learner in, using the local copy; it syncs once back online.
+  const last = store.get('eq_cloud_last', null);
+  if (last && !navigator.onLine) {
+    cloudUser = last; user = 'sb_' + last.id; data = loadData(user); setSync('offline');
+    return render();
+  }
   render();
 })();

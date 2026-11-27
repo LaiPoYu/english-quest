@@ -280,3 +280,7 @@ h1, h2, h3 { margin: 0; font-weight: 900; }
 .note-body .n-tip { margin: 0; }
 @media (prefers-color-scheme: dark) { .note-body .n-ex i { color: #ff8a8a; } }
 .mistake .note { margin-top: 4px; }
+
+/* cloud sync */
+.info { background: var(--blue-bg); color: var(--blue); border-radius: 10px; padding: 10px; font-size: 14px; }
+.sync-row #syncStatus { text-align: right; max-width: 70%; }

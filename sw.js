@@ -1,11 +1,13 @@
 // Service worker: offline support for English Quest.
 // Bump VERSION whenever app files change so users get the update.
-const VERSION = 'v2';
+const VERSION = 'v3';
 const CACHE = 'eq-' + VERSION;
 const FONT_CACHE = 'eq-fonts';
 const APP_SHELL = [
   './',
   './index.html',
+  './config.js',
+  './vendor/supabase/supabase.js',
   './styles.css',
   './app.js',
   './questions.js',
