@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#58cc02"/>
+  <path d="M136 130h240a40 40 0 0 1 40 40v140a40 40 0 0 1-40 40H250l-70 56v-56h-44a40 40 0 0 1-40-40V170a40 40 0 0 1 40-40z" fill="#46a302" transform="translate(0 14)"/>
+  <path d="M136 130h240a40 40 0 0 1 40 40v140a40 40 0 0 1-40 40H250l-70 56v-56h-44a40 40 0 0 1-40-40V170a40 40 0 0 1 40-40z" fill="#ffffff"/>
+  <text x="256" y="292" text-anchor="middle" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" font-size="132" fill="#58cc02">Aa</text>
+</svg>

@@ -233,3 +233,27 @@ h1, h2, h3 { margin: 0; font-weight: 900; }
 .lv-txt { flex: 1; display: flex; flex-direction: column; }
 @keyframes fade { from { opacity: 0; } }
 @keyframes up { from { transform: translateY(100%); } }
+
+/* PWA: safe areas when installed (notch / status bar) */
+.topbar { padding-top: calc(12px + env(safe-area-inset-top)); }
+.quiz-top { padding-top: calc(16px + env(safe-area-inset-top)); }
+.center-screen { padding-top: calc(24px + env(safe-area-inset-top)); }
+@media (display-mode: standalone) { body { overscroll-behavior-y: none; user-select: none; -webkit-user-select: none; } input { user-select: text; } }
+
+/* install card */
+.install-card { display: flex; align-items: center; gap: 12px; border-color: var(--green); background: var(--green-bg); }
+.install-icon { width: 48px; height: 48px; border-radius: 12px; flex: none; }
+.install-txt { flex: 1; min-width: 0; }
+.install-btns { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: none; }
+.btn-sm { width: auto; padding: 8px 14px; font-size: 13px; }
+.ios-steps { margin: 0 0 8px; padding-left: 22px; line-height: 1.9; font-weight: 600; }
+.ios-ico { display: inline-block; border: 2px solid var(--blue); color: var(--blue); border-radius: 6px; padding: 0 5px; font-size: 13px; }
+
+/* toast */
+.toast {
+  position: fixed; left: 50%; transform: translateX(-50%); z-index: 20;
+  bottom: calc(96px + env(safe-area-inset-bottom)); max-width: calc(100% - 32px);
+  background: #3c3c3c; color: #fff; padding: 12px 18px; border-radius: 14px; font-size: 15px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.25); cursor: pointer; animation: up .25s ease;
+}
+.toast[hidden] { display: none; }

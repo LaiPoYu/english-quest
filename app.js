@@ -417,7 +417,7 @@ function renderMain() {
   if (tab === 'learn') body = viewLearn();
   else if (tab === 'review') body = viewReview();
   else body = viewProfile();
-  app.innerHTML = `<div class="main">${topBar()}<div class="content">${body}</div>${tabBar()}</div>${sheet === 'levels' ? levelSheet() : ''}`;
+  app.innerHTML = `<div class="main">${topBar()}<div class="content">${body}</div>${tabBar()}</div>${sheet === 'levels' ? levelSheet() : sheet === 'ios' ? iosSheet() : ''}`;
 }
 
 function viewLearn() {
@@ -443,6 +443,7 @@ function viewLearn() {
       <span>${l}</span></button>`;
   }).join('');
   return `
+  ${installCard()}
   <section class="card goal">
     <div class="goal-head"><b>Daily goal</b><span>${Math.min(todayXp(), data.dailyGoal)} / ${data.dailyGoal} XP</span></div>
     <div class="bar yellow"><div style="width:${goalPct}%"></div></div>
@@ -511,10 +512,46 @@ function viewProfile() {
   <section class="card settings">
     <label class="row">Daily goal <select data-change="goal">${goalOpts}</select></label>
     <div class="row">Longest streak <b>🔥 ${data.longestStreak}</b></div>
+    ${installRow()}
     <button class="btn btn-ghost" data-act="placement">Retake placement test</button>
     <button class="btn btn-ghost danger" data-act="logout">Log out</button>
   </section>`;
 }
+
+/* ---------- install (PWA) ---------- */
+const installMode = () => (window.PWA ? window.PWA.installMode() : null);
+function installCard() {
+  const mode = installMode();
+  if (!mode || store.get('eq_install_dismissed', false)) return '';
+  return `
+  <section class="card install-card">
+    <img src="icons/icon-192.png" alt="" class="install-icon">
+    <div class="install-txt"><b>Install English Quest</b><div class="muted small">Open it from your home screen and practise offline.</div></div>
+    <div class="install-btns">
+      <button class="btn btn-green btn-sm" data-act="install">Install</button>
+      <button class="link small" data-act="dismissInstall">Not now</button>
+    </div>
+  </section>`;
+}
+function installRow() {
+  if (window.PWA && window.PWA.isStandalone()) return '<div class="row">App <b>✅ Installed</b></div>';
+  if (!installMode()) return '';
+  return '<button class="btn btn-ghost" data-act="install">📲 Install app</button>';
+}
+function iosSheet() {
+  return `<div class="overlay" data-act="closeSheet"></div>
+  <div class="sheet" role="dialog" aria-label="Install on iPhone"><div class="sheet-handle"></div>
+    <h3>Install on iPhone / iPad</h3>
+    <ol class="ios-steps">
+      <li>Open this page in <b>Safari</b>.</li>
+      <li>Tap the <b>Share</b> button <span class="ios-ico">⬆︎</span> in the toolbar.</li>
+      <li>Scroll down and tap <b>Add to Home Screen</b>.</li>
+      <li>Tap <b>Add</b>. English Quest appears on your home screen.</li>
+    </ol>
+    <button class="btn btn-green" data-act="closeSheet">Got it</button>
+  </div>`;
+}
+window.pwaRefresh = () => { if (user && data && data.placementDone && !S && !lastResult) render(); };
 
 function levelSheet() {
   const rows = LEVELS.map(l => {
@@ -543,6 +580,11 @@ const actions = {
   lesson(el) { startLesson(el.dataset.skill); },
   review() { startReview(); },
   logout() { if (confirm('Log out?')) logout(); },
+  async install() {
+    if (installMode() === 'ios') { sheet = 'ios'; render(); return; }
+    if (window.PWA) await window.PWA.install();
+  },
+  dismissInstall() { store.set('eq_install_dismissed', true); render(); },
 };
 app.addEventListener('click', e => {
   const el = e.target.closest('[data-act]');

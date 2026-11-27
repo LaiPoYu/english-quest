@@ -7,6 +7,16 @@ No install or build step. Pick one:
 - Double-click `index.html` to open it in a browser.
 - Or start a local server: `python3 -m http.server 8000`, then open http://localhost:8000. Phones on the same Wi-Fi can open it at the computer's IP address.
 
+## Install as an app (PWA)
+Open the site over **https** (for example GitHub Pages) or on `localhost`:
+- **Android / Chrome / Edge**: tap **Install** on the card at the top of the Learn page, or use the browser menu → *Install app*.
+- **iPhone / iPad**: in Safari, tap Share → **Add to Home Screen**. The app shows these steps when you tap Install.
+- **Desktop Chrome / Edge**: click the install icon in the address bar.
+
+Once installed, the app opens full-screen and works **offline**. When a new version is published, a "New version available" message appears; tap it to update.
+
+> Opening `index.html` by double-clicking (`file://`) works, but you can't install it and it won't work offline. Use a local server or GitHub Pages.
+
 ## Features
 - **Login / register**: Accounts live in the browser (localStorage). Passwords are stored as salted SHA-256 hashes.
 - **Placement test**: Adaptive, 3 questions per level from A1 up. Passing a level (2 of 3 correct) moves you to the next one. Your recommended level is the first level you don't pass.
@@ -22,6 +32,9 @@ No install or build step. Pick one:
 - `styles.css`: styles (supports dark mode, works on phone and desktop)
 - `questions.js`: question bank (6 levels × 2 skills × 10 questions = 120 questions)
 - `app.js`: app logic
+- `pwa.js`: service worker registration, install prompt, update and offline notices
+- `sw.js`: service worker (offline cache). **Bump `VERSION` whenever you change app files.**
+- `manifest.webmanifest`, `icons/`: app name, colors, icons
 
 ## Adding questions
 In `questions.js`, add a row to `BANK.<level>.<skill>`:
